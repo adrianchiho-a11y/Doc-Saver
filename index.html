@@ -88,6 +88,11 @@
             outline: 2px solid #2563eb;
             outline-offset: 1px;
         }
+        .slide-element [contenteditable="true"] {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            cursor: text !important;
+        }
         .slide-resize-handle {
             position: absolute;
             width: 10px;
@@ -121,6 +126,16 @@
 
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Testing build: hide retired per-device server/OAuth configuration controls. */
+        #serverConfigModal,
+        #loginScreenServerPill,
+        #headerServerStatusPill,
+        #dropdownServerSettingsBtn,
+        #openOAuthConfigFromToolbarBtn,
+        #configureEmailRelayFromOtpBtn {
+            display: none !important;
+        }
     </style>
 </head>
 <body class="h-screen w-screen flex flex-col overflow-hidden select-none bg-[#F8FAFD]">
@@ -1423,43 +1438,23 @@
             // =========================================================================
             // 1. REAL SERVER CONFIGURATION, TELEMETRY & CROSS-TAB BROADCAST CHANNEL
             // =========================================================================
-            const SERVER_CONFIG_KEY = 'docsaver_server_oauth_cfg_v2';
+            // App-wide configuration is fixed in this build; no per-browser OAuth/server settings.
             const ACTIVE_SESSION_KEY = 'docsaver_active_session_v2';
-            const DEFAULT_SERVER_CONFIG = {
+            const DEFAULT_SERVER_CONFIG = Object.freeze({
                 cloudEndpoint: '',
-                defaultHostDisplay: 'us-east1.cloud.docsaver.app',
+                defaultHostDisplay: 'Firebase / Firestore',
                 googleClientId: '',
                 emailJsServiceId: 'service_z1071hb',
                 emailJsTemplateId: 'template_rlti9e7',
                 emailJsPublicKey: '9XRg_Y7lowhB5AS-6'
-            };
-
+            });
             const syncChannel = ('BroadcastChannel' in window)
                 ? new BroadcastChannel('docsaver_sync')
                 : null;
-
-            function loadServerConfig() {
-                try {
-                    const raw = localStorage.getItem(SERVER_CONFIG_KEY);
-                    if (!raw) return { ...DEFAULT_SERVER_CONFIG };
-                    return { ...DEFAULT_SERVER_CONFIG, ...JSON.parse(raw) };
-                } catch (e) {
-                    return { ...DEFAULT_SERVER_CONFIG };
-                }
+            const serverConfig = { ...DEFAULT_SERVER_CONFIG };
+            function saveServerConfig() {
+                // Deliberately disabled: app configuration must not vary by device.
             }
-
-            function saveServerConfig(cfg) {
-                try {
-                    localStorage.setItem(SERVER_CONFIG_KEY, JSON.stringify(cfg));
-                } catch (e) { /* ignore */ }
-            }
-
-            let serverConfig = loadServerConfig();
-            // Use the supplied EmailJS configuration when no saved value exists.
-            serverConfig.emailJsServiceId = (serverConfig.emailJsServiceId || '').trim() || DEFAULT_SERVER_CONFIG.emailJsServiceId;
-            serverConfig.emailJsTemplateId = (serverConfig.emailJsTemplateId || '').trim() || DEFAULT_SERVER_CONFIG.emailJsTemplateId;
-            serverConfig.emailJsPublicKey = (serverConfig.emailJsPublicKey || '').trim() || DEFAULT_SERVER_CONFIG.emailJsPublicKey;
-            saveServerConfig(serverConfig);
             let lastPingMs = 24;
 
             function getActiveServerHost() {
@@ -2460,7 +2455,68 @@
             // =========================================================================
             let editorAutoSaveTimer = null;
 
+            // Undo/Redo history for editor actions outside native text-entry controls.
+            const editorUndoStack = [];
+            const editorRedoStack = [];
+            let lastEditorHistorySnapshot = '';
+
+            function getEditorHistorySnapshot() {
+                const item = items.find(i => i.id === activeEditorItemId);
+                return item ? JSON.stringify(item) : '';
+            }
+
+            function recordEditorHistoryChange() {
+                const snapshot = getEditorHistorySnapshot();
+                if (!snapshot || !lastEditorHistorySnapshot || snapshot === lastEditorHistorySnapshot) return;
+                editorUndoStack.push(lastEditorHistorySnapshot);
+                if (editorUndoStack.length > 100) editorUndoStack.shift();
+                editorRedoStack.length = 0;
+                lastEditorHistorySnapshot = snapshot;
+            }
+
+            function restoreEditorHistorySnapshot(snapshot) {
+                const index = items.findIndex(i => i.id === activeEditorItemId);
+                if (index < 0 || !snapshot) return false;
+                const restored = JSON.parse(snapshot);
+                items[index] = restored;
+                const item = items[index];
+                document.getElementById('editorTitleInput').value = item.name || '';
+                if (item.type === 'doc') {
+                    document.getElementById('richDocSurface').innerHTML = sanitizeRichHTML(item.content || '<p></p>');
+                    updateDocWordCount();
+                } else if (item.type === 'sheet') {
+                    renderSpreadsheetGrid(item);
+                } else if (item.type === 'slide') {
+                    currentSlideIdx = Math.min(currentSlideIdx, Math.max(0, (item.slides || []).length - 1));
+                    if (item.slides && item.slides[currentSlideIdx]) {
+                        const selectedStillExists = item.slides[currentSlideIdx].elements?.some(el => el.id === selectedElementId);
+                        if (!selectedStillExists) selectedElementId = null;
+                    }
+                    renderSlideEditor(item);
+                }
+                lastEditorHistorySnapshot = JSON.stringify(item);
+                markEditorSaving();
+                return true;
+            }
+
+            function undoEditorChange() {
+                if (!editorUndoStack.length) return false;
+                const current = getEditorHistorySnapshot();
+                const previous = editorUndoStack.pop();
+                if (current) editorRedoStack.push(current);
+                return restoreEditorHistorySnapshot(previous);
+            }
+
+            function redoEditorChange() {
+                if (!editorRedoStack.length) return false;
+                const current = getEditorHistorySnapshot();
+                const next = editorRedoStack.pop();
+                if (current) editorUndoStack.push(current);
+                return restoreEditorHistorySnapshot(next);
+            }
+
             function markEditorSaving() {
+                recordEditorHistoryChange();
                 const badge = document.getElementById('editorSaveStatus');
                 if (badge) {
                     badge.innerHTML = '<span>↻</span> Saving...';
@@ -2534,6 +2590,9 @@
                     document.getElementById('slideEditorContainer').classList.remove('hidden');
                     initializeSlideEditor(item);
                 }
+                editorUndoStack.length = 0;
+                editorRedoStack.length = 0;
+                lastEditorHistorySnapshot = JSON.stringify(item);
             }
 
             // =========================================================================
@@ -2971,12 +3030,14 @@
                             e.stopPropagation();
                             textBody.contentEditable = 'true';
                             textBody.style.cursor = 'text';
+                            textBody.style.userSelect = 'text';
                             textBody.focus();
                         });
 
                         textBody.addEventListener('blur', () => {
                             textBody.contentEditable = 'false';
                             textBody.style.cursor = 'move';
+                            textBody.style.userSelect = 'none';
                             el.text = textBody.innerText;
                             item.updatedAt = new Date().toISOString();
                             renderSlideEditor(item);
@@ -4272,7 +4333,19 @@
                 if (!elObj) return;
 
                 selectedElementId = elId;
-                renderSlideEditor(item);
+
+                // Text elements must not start a drag operation on click.
+                // The mouseup handler re-renders after every drag operation, even a
+                // zero-distance click, which interrupts the browser's double-click.
+                // Select the text box without rebuilding the canvas; its dblclick
+                // handler can then reliably turn on contentEditable.
+                if (elObj.type === 'text') {
+                    elWrapper.classList.add('selected');
+                    if (e.target.closest('[contenteditable="true"]')) return;
+                    return;
+                } else {
+                    renderSlideEditor(item);
+                }
 
                 // Do not drag if user is actively typing inside a contentEditable text box
                 if (e.target.isContentEditable) return;
@@ -4747,6 +4820,19 @@
                         }
                     }
                     return;
+                }
+
+                // App-level Undo/Redo. Leave native undo untouched while typing in text fields.
+                if (isStandaloneEditorTab && !isEditingText && (e.ctrlKey || e.metaKey)) {
+                    const key = e.key.toLowerCase();
+                    if (key === 'z' && !e.shiftKey) {
+                        if (undoEditorChange()) e.preventDefault();
+                        return;
+                    }
+                    if (key === 'y' || (key === 'z' && e.shiftKey)) {
+                        if (redoEditorChange()) e.preventDefault();
+                        return;
+                    }
                 }
 
                 // Slides Ctrl+C / Ctrl+V / Delete when not actively typing inside an input/textarea
