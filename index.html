@@ -2081,14 +2081,22 @@
                 const cookieKey = COOKIE_ACCOUNT_PREFIX + accountId;
 
                 let encrypted = null;
-                if (navigator.onLine && cloudUid) encrypted = await pullAccountFromCloudServer(cloudUid);
-                if (!encrypted) encrypted = readChunkedCookieData(cookieKey);
-                if (!encrypted) {
-                    try {
-                        const localVault = await readOfflineVault(accountId);
-                        if (localVault && localVault.payload) encrypted = localVault.payload;
-                    } catch (e) { console.warn('Offline vault could not be read:', e); }
+                let localVault = null;
+                try { localVault = await readOfflineVault(accountId); }
+                catch (e) { console.warn('Offline vault could not be read:', e); }
+
+                // If this device has edits waiting from an earlier offline session, upload
+                // those edits before loading the cloud copy so they are not overwritten.
+                if (navigator.onLine && cloudUid && localVault?.dirty && localVault.payload) {
+                    const synced = await syncAccountToCloudServer(cloudUid, localVault.payload);
+                    if (synced) {
+                        encrypted = localVault.payload;
+                        try { await markOfflineVaultSynced(accountId); } catch (e) { /* keep local copy */ }
+                    }
                 }
+                if (!encrypted && navigator.onLine && cloudUid) encrypted = await pullAccountFromCloudServer(cloudUid);
+                if (!encrypted) encrypted = readChunkedCookieData(cookieKey);
+                if (!encrypted && localVault?.payload) encrypted = localVault.payload;
 
                 if (encrypted) {
                     const decryptedJson = await decryptAccountPayload(accountId, encrypted);
