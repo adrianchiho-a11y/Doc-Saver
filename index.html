@@ -2959,7 +2959,7 @@
             function renderSheetTabs(item) {
                 ensureSheetStructure(item);
                 const bar = document.getElementById('sheetTabsBar');
-                bar.innerHTML = item.sheetPages.map((page, idx) => '<button type="button" data-sheet-page="' + idx + '" class="px-3 py-1.5 rounded-t-lg border text-xs font-semibold whitespace-nowrap ' + (idx === item.activeSheetPageIndex ? 'bg-white border-slate-300 border-b-white text-emerald-700' : 'bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200') + '">' + escapeHTML(page.name || ('Sheet ' + (idx + 1))) + '</button>').join('') + '<button type="button" id="addSheetPageBtn" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 whitespace-nowrap">+ Sheet</button><button type="button" id="removeSheetPageBtn" class="px-2.5 py-1.5 rounded-lg text-xs text-red-600 hover:bg-red-50 whitespace-nowrap">− Sheet</button>';
+                bar.innerHTML = item.sheetPages.map((page, idx) => '<button type="button" data-sheet-page="' + idx + '" class="px-3 py-1.5 rounded-t-lg border text-xs font-semibold whitespace-nowrap ' + (idx === item.activeSheetPageIndex ? 'bg-white border-slate-300 border-b-white text-emerald-700' : 'bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200') + '">' + escapeHTML(page.name || ('Sheet ' + (idx + 1))) + '</button>').join('') + '<button type="button" id="addSheetPageBtn" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 whitespace-nowrap">+ Sheet</button><button type="button" id="renameSheetPageBtn" class="px-2.5 py-1.5 rounded-lg text-xs text-blue-700 hover:bg-blue-50 whitespace-nowrap">Rename</button><button type="button" id="removeSheetPageBtn" class="px-2.5 py-1.5 rounded-lg text-xs text-red-600 hover:bg-red-50 whitespace-nowrap">− Sheet</button>';
                 bar.querySelectorAll('[data-sheet-page]').forEach(btn => btn.addEventListener('click', () => {
                     const next = Number(btn.dataset.sheetPage); if (next === item.activeSheetPageIndex) return;
                     item.sheetPages[item.activeSheetPageIndex] = item.sheetData; item.activeSheetPageIndex = next; item.sheetData = item.sheetPages[next];
@@ -2978,6 +2978,19 @@
                     if (!confirm('Delete this sheet page and all its cells?')) return;
                     item.sheetPages.splice(item.activeSheetPageIndex, 1); item.activeSheetPageIndex = Math.max(0, item.activeSheetPageIndex - 1);
                     item.sheetData = item.sheetPages[item.activeSheetPageIndex]; renderSheetTabs(item); renderSpreadsheetGrid(item); markEditorSaving();
+                });
+                document.getElementById('renameSheetPageBtn').addEventListener('click', () => {
+                    const page = item.sheetPages[item.activeSheetPageIndex];
+                    const currentName = page.name || ('Sheet ' + (item.activeSheetPageIndex + 1));
+                    const nextName = prompt('Enter a name for this sheet:', currentName);
+                    if (nextName === null) return;
+                    const cleanName = nextName.trim().slice(0, 80);
+                    if (!cleanName) { showToast('Sheet name cannot be empty.'); return; }
+                    page.name = cleanName;
+                    item.sheetData = page;
+                    item.updatedAt = new Date().toISOString();
+                    renderSheetTabs(item);
+                    markEditorSaving();
                 });
             }
             function evaluateCellRaw(rawVal, cellsMap, visited = new Set()) {
@@ -4370,14 +4383,25 @@
                     } else if (extension === 'xlsx' || extension === 'csv') {
                         const buffer = extension === 'csv' ? await file.text() : await file.arrayBuffer();
                         const workbook = XLSX.read(buffer, { type: extension === 'csv' ? 'string' : 'array', cellDates: false });
-                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        if (!firstSheet) throw new Error('The spreadsheet has no worksheet.');
-                        const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false, defval: '' });
+                        if (!workbook.SheetNames.length) throw new Error('The spreadsheet has no worksheet.');
                         newItem = importedBaseItem('sheet', baseName);
-                        newItem.sheetData = { cells: {}, styles: {}, colWidths: {}, rowHeights: {} };
-                        rows.slice(0, 40).forEach((row, r) => (row || []).slice(0, 20).forEach((value, c) => {
-                            if (value !== '' && value !== null && value !== undefined) newItem.sheetData.cells[cellKey(c, r)] = String(value);
-                        }));
+                        newItem.sheetPages = workbook.SheetNames.map((sheetName, pageIndex) => {
+                            const sourceSheet = workbook.Sheets[sheetName];
+                            const rows = XLSX.utils.sheet_to_json(sourceSheet, { header: 1, raw: false, defval: '' });
+                            const range = sourceSheet['!ref'] ? XLSX.utils.decode_range(sourceSheet['!ref']) : { s: { c: 0, r: 0 }, e: { c: 0, r: 0 } };
+                            const page = {
+                                name: String(sheetName || ('Sheet ' + (pageIndex + 1))),
+                                cells: {}, styles: {}, colWidths: {}, rowHeights: {},
+                                cols: Math.max(1, Math.min(20, range.e.c - range.s.c + 1)),
+                                rows: Math.max(1, Math.min(40, range.e.r - range.s.r + 1))
+                            };
+                            rows.slice(0, 40).forEach((row, r) => (row || []).slice(0, 20).forEach((value, c) => {
+                                if (value !== '' && value !== null && value !== undefined) page.cells[cellKey(c, r)] = String(value);
+                            }));
+                            return page;
+                        });
+                        newItem.activeSheetPageIndex = 0;
+                        newItem.sheetData = newItem.sheetPages[0];
                     } else if (extension === 'pptx') {
                         const zip = await JSZip.loadAsync(await file.arrayBuffer());
                         const slidePaths = Object.keys(zip.files).filter(path => /^ppt\/slides\/slide\d+\.xml$/.test(path))
@@ -5032,8 +5056,62 @@
                 }
             });
 
-            // Double-click cell to edit directly inline
+            function beginSheetCellEdit(item, c, r, initialText = null) {
+                ensureSheetStructure(item);
+                const key = cellKey(c, r);
+                const td = sheetTable.querySelector('[data-cell-col="' + c + '"][data-cell-row="' + r + '"]');
+                if (!td) return;
+                const inlineInput = document.createElement('input');
+                inlineInput.type = 'text';
+                inlineInput.value = initialText === null ? (item.sheetData.cells[key] || '') : initialText;
+                inlineInput.className = 'w-full h-full min-w-0 px-1 bg-white text-xs font-mono text-slate-900 outline-none select-text';
+                inlineInput.setAttribute('aria-label', 'Edit spreadsheet cell');
+                td.innerHTML = '';
+                td.appendChild(inlineInput);
+                inlineInput.focus();
+                if (initialText === null) inlineInput.select();
+                let committed = false;
+                function commitCell() {
+                    if (committed) return;
+                    committed = true;
+                    const value = inlineInput.value;
+                    if (value === '') delete item.sheetData.cells[key];
+                    else item.sheetData.cells[key] = value;
+                    item.updatedAt = new Date().toISOString();
+                    renderSpreadsheetGrid(item);
+                    markEditorSaving();
+                }
+                inlineInput.addEventListener('blur', commitCell);
+                inlineInput.addEventListener('keydown', ev => {
+                    if (ev.key === 'Enter') { ev.preventDefault(); inlineInput.blur(); }
+                    if (ev.key === 'Escape') { committed = true; renderSpreadsheetGrid(item); }
+                });
+            }
+
+            // Double-click still opens the selected cell editor.
             sheetTable.addEventListener('dblclick', (e) => {
+                const td = e.target.closest('[data-cell-col]');
+                if (!td) return;
+                const item = items.find(i => i.id === activeEditorItemId);
+                if (!item || item.type !== 'sheet') return;
+                beginSheetCellEdit(item, Number(td.dataset.cellCol), Number(td.dataset.cellRow));
+            });
+
+            // Spreadsheet-style typing: select a cell, then type to replace its value.
+            document.addEventListener('keydown', e => {
+                const item = items.find(i => i.id === activeEditorItemId);
+                if (!item || item.type !== 'sheet' || document.getElementById('sheetEditorContainer').classList.contains('hidden')) return;
+                const target = e.target;
+                if (target && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName))) return;
+                if (e.ctrlKey || e.metaKey || e.altKey) return;
+                const key = e.key;
+                if (!(key.length === 1 || key === 'Enter' || key === 'F2' || key === 'Backspace' || key === 'Delete')) return;
+                e.preventDefault();
+                const c = sheetSelection.startCol, r = sheetSelection.startRow;
+                beginSheetCellEdit(item, c, r, key.length === 1 ? key : '');
+            });
+
+            document.getElementById('sheetFormulaInput')
                 const td = e.target.closest('[data-cell-col]');
                 if (!td) return;
                 const item = items.find(i => i.id === activeEditorItemId);
@@ -5064,14 +5142,6 @@
                 }
 
                 inlineInput.addEventListener('blur', commitCell);
-                inlineInput.addEventListener('keydown', (ev) => {
-                    if (ev.key === 'Enter') {
-                        ev.preventDefault();
-                        inlineInput.blur();
-                    }
-                });
-            });
-
             document.getElementById('sheetFormulaInput').addEventListener('input', (e) => {
                 const item = items.find(i => i.id === activeEditorItemId);
                 if (!item) return;
