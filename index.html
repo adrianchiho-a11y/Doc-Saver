@@ -1801,7 +1801,7 @@
                 if (!userUid || !firebaseAuth.currentUser || firebaseAuth.currentUser.uid !== userUid) return false;
                 try {
                     const workspaceRef = doc(firestoreDb, 'users', userUid, 'workspace', 'vault');
-                    const chunksRef = (index) => doc(firestoreDb, 'users', userUid, 'workspace', 'vaultChunks', `chunk_${index}`);
+                    const chunksRef = (index) => doc(firestoreDb, 'users', userUid, 'workspace', 'vault', 'chunks', `chunk_${index}`);
                     const totalChunks = Math.ceil(encryptedPayload.length / CLOUD_VAULT_CHUNK_CHARS);
 
                     // Write all chunks first; update the manifest last so readers never
@@ -1845,7 +1845,7 @@
                     if (!data.chunked || !Number(data.totalChunks)) return null;
                     let assembled = '';
                     for (let i = 0; i < Number(data.totalChunks); i++) {
-                        const chunkSnapshot = await getDoc(doc(firestoreDb, 'users', userUid, 'workspace', 'vaultChunks', `chunk_${i}`));
+                        const chunkSnapshot = await getDoc(doc(firestoreDb, 'users', userUid, 'workspace', 'vault', 'chunks', `chunk_${i}`));
                         if (!chunkSnapshot.exists() || typeof chunkSnapshot.data()?.payload !== 'string') {
                             throw new Error(`Missing cloud vault chunk ${i}`);
                         }
