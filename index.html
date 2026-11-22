@@ -5111,37 +5111,6 @@
                 beginSheetCellEdit(item, c, r, key.length === 1 ? key : '');
             });
 
-            document.getElementById('sheetFormulaInput')
-                const td = e.target.closest('[data-cell-col]');
-                if (!td) return;
-                const item = items.find(i => i.id === activeEditorItemId);
-                if (!item) return;
-                const c = parseInt(td.dataset.cellCol, 10);
-                const r = parseInt(td.dataset.cellRow, 10);
-                const k = cellKey(c, r);
-
-                const inlineInput = document.createElement('input');
-                inlineInput.type = 'text';
-                inlineInput.value = item.sheetData.cells[k] || '';
-                inlineInput.className = 'w-full h-full px-1 bg-white text-xs font-mono text-slate-900 outline-none select-text';
-                td.innerHTML = '';
-                td.appendChild(inlineInput);
-                inlineInput.focus();
-                inlineInput.select();
-
-                function commitCell() {
-                    const val = inlineInput.value;
-                    if (val === '') {
-                        delete item.sheetData.cells[k];
-                    } else {
-                        item.sheetData.cells[k] = val;
-                    }
-                    item.updatedAt = new Date().toISOString();
-                    renderSpreadsheetGrid(item);
-                    markEditorSaving();
-                }
-
-                inlineInput.addEventListener('blur', commitCell);
             document.getElementById('sheetFormulaInput').addEventListener('input', (e) => {
                 const item = items.find(i => i.id === activeEditorItemId);
                 if (!item) return;
