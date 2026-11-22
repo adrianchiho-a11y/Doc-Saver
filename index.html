@@ -1468,7 +1468,7 @@
     <div id="storageDetailsModal" class="fixed inset-0 z-[60] hidden items-center justify-center p-4 bg-slate-900/40">
       <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-5"><div class="flex justify-between mb-4"><h2 class="font-bold text-lg">Storage details</h2><button id="closeStorageDetailsBtn" type="button">✕</button></div>
         <div class="bg-slate-50 rounded-xl p-3 mb-4 text-sm"><div class="flex justify-between"><span>Estimated vault used</span><strong id="storageDetailUsed">0 B</strong></div><div class="flex justify-between mt-1"><span>Estimated space empty</span><strong id="storageDetailEmpty">100%</strong></div><div class="h-2 bg-slate-200 rounded-full overflow-hidden mt-3"><div id="storageDetailBar" class="h-full bg-blue-600" style="width:0%"></div></div></div>
-        <div id="storageBreakdownRows" class="space-y-3"></div><p class="text-[10px] text-slate-400 mt-4">Category percentages show each type's share of used vault data. Empty space is estimated against a 15 GB display target; this is not a live Firebase quota reading.</p>
+        <div id="storageBreakdownRows" class="space-y-3"></div><p class="text-[10px] text-slate-400 mt-4">Each Doc Saver account has its own 8 MB limit. This meter counts only the signed-in account's Docs, Sheets, Slides, and Keep notes. Usage is estimated from saved item data.</p>
       </div>
     </div>
     <div id="toastBanner"
@@ -1794,15 +1794,38 @@
                 }
             }
 
+            // Firestore documents have a 1 MiB limit, so larger encrypted vaults are split
+            // into smaller documents. The 8 MB user quota is measured before encryption.
+            const CLOUD_VAULT_CHUNK_CHARS = 700000;
             async function syncAccountToCloudServer(userUid, encryptedPayload) {
                 if (!userUid || !firebaseAuth.currentUser || firebaseAuth.currentUser.uid !== userUid) return false;
                 try {
-                    const vaultRef = doc(firestoreDb, 'users', userUid, 'workspace', 'vault');
-                    await setDoc(vaultRef, {
-                        payload: encryptedPayload,
+                    const workspaceRef = doc(firestoreDb, 'users', userUid, 'workspace', 'vault');
+                    const chunksRef = (index) => doc(firestoreDb, 'users', userUid, 'workspace', 'vaultChunks', `chunk_${index}`);
+                    const totalChunks = Math.ceil(encryptedPayload.length / CLOUD_VAULT_CHUNK_CHARS);
+
+                    // Write all chunks first; update the manifest last so readers never
+                    // treat a partially uploaded vault as complete.
+                    for (let i = 0; i < totalChunks; i++) {
+                        await setDoc(chunksRef(i), {
+                            payload: encryptedPayload.slice(i * CLOUD_VAULT_CHUNK_CHARS, (i + 1) * CLOUD_VAULT_CHUNK_CHARS),
+                            index: i,
+                            updatedAt: serverTimestamp()
+                        });
+                    }
+                    const previous = await getDoc(workspaceRef);
+                    const previousCount = Number(previous.data()?.totalChunks || 0);
+                    await setDoc(workspaceRef, {
+                        chunked: true,
+                        totalChunks,
                         email: firebaseAuth.currentUser.email || '',
                         updatedAt: serverTimestamp()
                     });
+
+                    // Remove leftover chunks when a vault becomes smaller.
+                    for (let i = totalChunks; i < previousCount; i++) {
+                        await deleteDoc(chunksRef(i));
+                    }
                     return true;
                 } catch (e) {
                     console.error('Firebase cloud save failed:', e);
@@ -1816,8 +1839,19 @@
                     const vaultRef = doc(firestoreDb, 'users', userUid, 'workspace', 'vault');
                     const snapshot = await getDoc(vaultRef);
                     if (!snapshot.exists()) return null;
-                    const data = snapshot.data();
-                    return data && data.payload ? data.payload : null;
+                    const data = snapshot.data() || {};
+                    // Backward compatibility with vaults saved before chunking.
+                    if (data.payload) return data.payload;
+                    if (!data.chunked || !Number(data.totalChunks)) return null;
+                    let assembled = '';
+                    for (let i = 0; i < Number(data.totalChunks); i++) {
+                        const chunkSnapshot = await getDoc(doc(firestoreDb, 'users', userUid, 'workspace', 'vaultChunks', `chunk_${i}`));
+                        if (!chunkSnapshot.exists() || typeof chunkSnapshot.data()?.payload !== 'string') {
+                            throw new Error(`Missing cloud vault chunk ${i}`);
+                        }
+                        assembled += chunkSnapshot.data().payload;
+                    }
+                    return assembled;
                 } catch (e) {
                     console.error('Firebase cloud load failed:', e);
                     return null;
@@ -1960,13 +1994,28 @@
             }
 
             async function persistCurrentUserItems(broadcastUpdate = true) {
-                if (!currentUser) return;
+                if (!currentUser) return false;
                 const accountId = normalizeAccountId(currentUser.email);
                 const cloudUid = currentUser.firebaseUid || currentUser.uid || firebaseAuth.currentUser?.uid || '';
                 const cookieKey = COOKIE_ACCOUNT_PREFIX + accountId;
                 const serialized = JSON.stringify(items);
+                const logicalBytes = new TextEncoder().encode(serialized).length;
+
+                // This is a per-account app limit, not a shared project-wide counter.
+                if (logicalBytes > USER_STORAGE_LIMIT_BYTES) {
+                    updateStorageMeter();
+                    const syncBadge = document.getElementById('sidebarSyncBadge');
+                    if (syncBadge) syncBadge.textContent = 'Storage full';
+                    showToast('This account is over its 8 MB limit. Delete some items before saving more.');
+                    return false;
+                }
+
                 const encrypted = await encryptAccountPayload(accountId, serialized);
-                writeChunkedCookieData(cookieKey, encrypted);
+                // Keep a small local fallback only; larger vaults are stored in Firestore
+                // chunks because browser cookie/localStorage limits are much smaller.
+                if (encrypted.length <= LOCAL_VAULT_BACKUP_LIMIT_CHARS) {
+                    writeChunkedCookieData(cookieKey, encrypted);
+                }
                 updateStorageMeter();
 
                 if (broadcastUpdate && syncChannel) {
@@ -1982,8 +2031,12 @@
 
                 const cloudSynced = cloudUid ? await syncAccountToCloudServer(cloudUid, encrypted) : false;
                 if (syncBadge) {
-                    syncBadge.textContent = cloudSynced ? 'Cloud Synced' : 'Vault Saved';
+                    syncBadge.textContent = cloudSynced ? 'Cloud Synced' : (encrypted.length <= LOCAL_VAULT_BACKUP_LIMIT_CHARS ? 'Vault Saved' : 'Cloud Sync Failed');
                 }
+                if (!cloudSynced && encrypted.length > LOCAL_VAULT_BACKUP_LIMIT_CHARS) {
+                    showToast('Cloud save failed. Your large vault was not saved; please try again.');
+                }
+                return cloudSynced;
             }
 
             /**
@@ -2633,9 +2686,11 @@
                 }
                 clearTimeout(editorAutoSaveTimer);
                 editorAutoSaveTimer = setTimeout(async () => {
-                    await persistCurrentUserItems(true);
+                    const saved = await persistCurrentUserItems(true);
                     if (badge) {
-                        badge.innerHTML = '<span>✓</span> Synced to server &amp; Drive tab';
+                        badge.innerHTML = saved
+                            ? '<span>✓</span> Synced to cloud'
+                            : '<span>!</span> Not saved — check storage or connection';
                     }
                 }, 450);
             }
@@ -3264,17 +3319,24 @@
                 return new Blob([JSON.stringify(item)]).size;
             }
 
-            const STORAGE_DISPLAY_TARGET = 15 * 1024 * 1024 * 1024;
+            const USER_STORAGE_LIMIT_BYTES = 8 * 1024 * 1024;
+            const LOCAL_VAULT_BACKUP_LIMIT_CHARS = 300000;
             function getStorageBreakdown() {
+                // 'items' is loaded for the currently signed-in account only.
                 const categories = { doc: 0, sheet: 0, slide: 0, keep: 0 };
-                items.forEach(it => { if (Object.prototype.hasOwnProperty.call(categories, it.type)) categories[it.type] += estimateItemBytes(it); });
+                items.forEach(it => {
+                    if (Object.prototype.hasOwnProperty.call(categories, it.type)) {
+                        categories[it.type] += estimateItemBytes(it);
+                    }
+                });
                 const used = Object.values(categories).reduce((a,b) => a+b, 0);
-                return { categories, used, usedPct: Math.min(100, used / STORAGE_DISPLAY_TARGET * 100), emptyPct: Math.max(0, 100 - used / STORAGE_DISPLAY_TARGET * 100) };
+                const usedPct = Math.min(100, used / USER_STORAGE_LIMIT_BYTES * 100);
+                return { categories, used, usedPct, emptyPct: Math.max(0, 100 - usedPct) };
             }
             function renderStorageDetails() {
                 const d = getStorageBreakdown();
                 document.getElementById('storageDetailUsed').textContent = formatBytes(d.used);
-                document.getElementById('storageDetailEmpty').textContent = d.emptyPct.toFixed(4) + '%';
+                document.getElementById('storageDetailEmpty').textContent = d.emptyPct.toFixed(1) + '%';
                 document.getElementById('storageDetailBar').style.width = d.usedPct + '%';
                 const defs = [['doc','Docs','bg-blue-600'],['sheet','Sheets','bg-emerald-600'],['slide','Slides','bg-amber-500'],['keep','Keep','bg-yellow-400']];
                 document.getElementById('storageBreakdownRows').innerHTML = defs.map(([k,n,c]) => {
@@ -3286,7 +3348,7 @@
                 const d = getStorageBreakdown();
                 const bar = document.getElementById('storageProgressBar'), txt = document.getElementById('storageUsageText');
                 if (bar) bar.style.width = d.usedPct + '%';
-                if (txt) txt.textContent = formatBytes(d.used) + ' estimated';
+                if (txt) txt.textContent = formatBytes(d.used) + ' / 8 MB used';
                 renderStorageDetails();
             }
 
@@ -4178,6 +4240,10 @@
                     newItem.slides = [createDefaultSlide('Presentation Title', 'Double-click any text box to edit')];
                 }
 
+                if (getStorageBreakdown().used + estimateItemBytes(newItem) > USER_STORAGE_LIMIT_BYTES) {
+                    showToast('You have reached this account\'s 8 MB storage limit. Delete items to make room.');
+                    return;
+                }
                 items.unshift(newItem);
                 await persistCurrentUserItems();
                 renderDrive();
@@ -4190,6 +4256,10 @@
             document.getElementById('createKeepAction').addEventListener('click', async () => {
                 document.getElementById('newDropdownMenu').classList.add('hidden');
                 const item={id:generateId('keep'),type:'keep',name:'Untitled note',content:'',checklist:[],color:'#fef3c7',pinned:false,parentId:currentNav==='drive'?currentFolderId:'root',starred:false,trashed:false,updatedAt:new Date().toISOString()};
+                if (getStorageBreakdown().used + estimateItemBytes(item) > USER_STORAGE_LIMIT_BYTES) {
+                    showToast('You have reached this account\'s 8 MB storage limit. Delete items to make room.');
+                    return;
+                }
                 items.unshift(item); await persistCurrentUserItems(); renderDrive(); openKeepEditor(item);
             });
             ['keepTitleInput','keepContentInput','keepColorSelect','keepPinnedInput'].forEach(id=>{
