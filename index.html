@@ -737,7 +737,7 @@
                     </button>
                 </div>
 
-                <button type="button" id="installDocSaverBtn" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white hover:bg-blue-50 border border-slate-200 text-xs font-semibold text-blue-700 shadow-2xs transition cursor-pointer" title="Install Doc Saver on this device">↓ Install</button>
+                <button type="button" id="installDocSaverBtn" class="inline-flex items-center gap-1 px-2 sm:px-3 py-2 rounded-full bg-white hover:bg-blue-50 border border-slate-200 text-[11px] sm:text-xs font-semibold text-blue-700 shadow-2xs transition cursor-pointer" title="Install Doc Saver on this device">↓ Install</button>
 
                 <!-- Active User Account Chip & Switcher -->
                 <div class="relative">
@@ -2916,7 +2916,7 @@
             const SHEET_COLS = 20; // Initial columns
             const SHEET_ROWS = 40; // Initial rows
             const SHEET_MAX_COLS = 100;
-            const SHEET_MAX_ROWS = 500
+            const SHEET_MAX_ROWS = 500;
             const DEFAULT_COL_WIDTH = 110;
             const DEFAULT_ROW_HEIGHT = 28;
 
@@ -3007,7 +3007,7 @@
                     return nums;
                 }
 
-                const fnMatch = expr.match(/^(SUM|AVERAGE|AVG|MIN|MAX|COUNT)\(([A-Z]\d+):([A-Z]\d+)\)$/);
+                const fnMatch = expr.match(/^(SUM|AVERAGE|AVG|MIN|MAX|COUNT)\(([A-Z]+\d+):([A-Z]+\d+)\)$/);
                 if (fnMatch) {
                     const fn = fnMatch[1];
                     const vals = getNumericRange(fnMatch[2], fnMatch[3]);
@@ -3020,7 +3020,7 @@
                 }
 
                 // Replace cell references like A1, B2 with numeric values
-                const replaced = expr.replace(/\b([A-Z]\d+)\b/g, (match) => {
+                const replaced = expr.replace(/\b([A-Z]+\d+)\b/g, (match) => {
                     if (visited.has(match)) return '0';
                     const nextVisited = new Set(visited);
                     nextVisited.add(match);
@@ -3085,7 +3085,7 @@
             }
 
             function getSelectionBadgeLabel() {
-                if (sheetSelection.type === 'all') return 'ALL (A1:T40)';
+                if (sheetSelection.type === 'all') return 'ALL (' + cellKey(0, 0) + ':' + cellKey(sheetColCount(items.find(i => i.id === activeEditorItemId)) - 1, sheetRowCount(items.find(i => i.id === activeEditorItemId)) - 1) + ')';
                 if (sheetSelection.type === 'col') {
                     const c1 = Math.min(sheetSelection.startCol, sheetSelection.endCol);
                     const c2 = Math.max(sheetSelection.startCol, sheetSelection.endCol);
@@ -5092,7 +5092,7 @@
             document.getElementById('sheetSelectAllBtn').addEventListener('click', () => {
                 const item = items.find(i => i.id === activeEditorItemId);
                 if (!item) return;
-                sheetSelection = { type: 'all', startCol: 0, startRow: 0, endCol: SHEET_COLS - 1, endRow: SHEET_ROWS - 1, isDragging: false };
+                sheetSelection = { type: 'all', startCol: 0, startRow: 0, endCol: item.sheetData.cols - 1, endRow: item.sheetData.rows - 1, isDragging: false };
                 renderSpreadsheetGrid(item);
             });
 
