@@ -2455,7 +2455,68 @@
             // =========================================================================
             let editorAutoSaveTimer = null;
 
+            // Undo/Redo history for editor actions outside native text-entry controls.
+            const editorUndoStack = [];
+            const editorRedoStack = [];
+            let lastEditorHistorySnapshot = '';
+
+            function getEditorHistorySnapshot() {
+                const item = items.find(i => i.id === activeEditorItemId);
+                return item ? JSON.stringify(item) : '';
+            }
+
+            function recordEditorHistoryChange() {
+                const snapshot = getEditorHistorySnapshot();
+                if (!snapshot || !lastEditorHistorySnapshot || snapshot === lastEditorHistorySnapshot) return;
+                editorUndoStack.push(lastEditorHistorySnapshot);
+                if (editorUndoStack.length > 100) editorUndoStack.shift();
+                editorRedoStack.length = 0;
+                lastEditorHistorySnapshot = snapshot;
+            }
+
+            function restoreEditorHistorySnapshot(snapshot) {
+                const index = items.findIndex(i => i.id === activeEditorItemId);
+                if (index < 0 || !snapshot) return false;
+                const restored = JSON.parse(snapshot);
+                items[index] = restored;
+                const item = items[index];
+                document.getElementById('editorTitleInput').value = item.name || '';
+                if (item.type === 'doc') {
+                    document.getElementById('richDocSurface').innerHTML = sanitizeRichHTML(item.content || '<p></p>');
+                    updateDocWordCount();
+                } else if (item.type === 'sheet') {
+                    renderSpreadsheetGrid(item);
+                } else if (item.type === 'slide') {
+                    currentSlideIdx = Math.min(currentSlideIdx, Math.max(0, (item.slides || []).length - 1));
+                    if (item.slides && item.slides[currentSlideIdx]) {
+                        const selectedStillExists = item.slides[currentSlideIdx].elements?.some(el => el.id === selectedElementId);
+                        if (!selectedStillExists) selectedElementId = null;
+                    }
+                    renderSlideEditor(item);
+                }
+                lastEditorHistorySnapshot = JSON.stringify(item);
+                markEditorSaving();
+                return true;
+            }
+
+            function undoEditorChange() {
+                if (!editorUndoStack.length) return false;
+                const current = getEditorHistorySnapshot();
+                const previous = editorUndoStack.pop();
+                if (current) editorRedoStack.push(current);
+                return restoreEditorHistorySnapshot(previous);
+            }
+
+            function redoEditorChange() {
+                if (!editorRedoStack.length) return false;
+                const current = getEditorHistorySnapshot();
+                const next = editorRedoStack.pop();
+                if (current) editorUndoStack.push(current);
+                return restoreEditorHistorySnapshot(next);
+            }
+
             function markEditorSaving() {
+                recordEditorHistoryChange();
                 const badge = document.getElementById('editorSaveStatus');
                 if (badge) {
                     badge.innerHTML = '<span>↻</span> Saving...';
@@ -2529,6 +2590,9 @@
                     document.getElementById('slideEditorContainer').classList.remove('hidden');
                     initializeSlideEditor(item);
                 }
+                editorUndoStack.length = 0;
+                editorRedoStack.length = 0;
+                lastEditorHistorySnapshot = JSON.stringify(item);
             }
 
             // =========================================================================
@@ -4756,6 +4820,19 @@
                         }
                     }
                     return;
+                }
+
+                // App-level Undo/Redo. Leave native undo untouched while typing in text fields.
+                if (isStandaloneEditorTab && !isEditingText && (e.ctrlKey || e.metaKey)) {
+                    const key = e.key.toLowerCase();
+                    if (key === 'z' && !e.shiftKey) {
+                        if (undoEditorChange()) e.preventDefault();
+                        return;
+                    }
+                    if (key === 'y' || (key === 'z' && e.shiftKey)) {
+                        if (redoEditorChange()) e.preventDefault();
+                        return;
+                    }
                 }
 
                 // Slides Ctrl+C / Ctrl+V / Delete when not actively typing inside an input/textarea
