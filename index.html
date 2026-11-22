@@ -1468,7 +1468,7 @@
     <div id="storageDetailsModal" class="fixed inset-0 z-[60] hidden items-center justify-center p-4 bg-slate-900/40">
       <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-5"><div class="flex justify-between mb-4"><h2 class="font-bold text-lg">Storage details</h2><button id="closeStorageDetailsBtn" type="button">✕</button></div>
         <div class="bg-slate-50 rounded-xl p-3 mb-4 text-sm"><div class="flex justify-between"><span>Estimated vault used</span><strong id="storageDetailUsed">0 B</strong></div><div class="flex justify-between mt-1"><span>Estimated space empty</span><strong id="storageDetailEmpty">100%</strong></div><div class="h-2 bg-slate-200 rounded-full overflow-hidden mt-3"><div id="storageDetailBar" class="h-full bg-blue-600" style="width:0%"></div></div></div>
-        <div id="storageBreakdownRows" class="space-y-3"></div><p class="text-[10px] text-slate-400 mt-4">Percentages use a 15 GB display target and estimated item sizes. This is not a live Firebase quota reading.</p>
+        <div id="storageBreakdownRows" class="space-y-3"></div><p class="text-[10px] text-slate-400 mt-4">Category percentages show each type's share of used vault data. Empty space is estimated against a 15 GB display target; this is not a live Firebase quota reading.</p>
       </div>
     </div>
     <div id="toastBanner"
@@ -3278,8 +3278,8 @@
                 document.getElementById('storageDetailBar').style.width = d.usedPct + '%';
                 const defs = [['doc','Docs','bg-blue-600'],['sheet','Sheets','bg-emerald-600'],['slide','Slides','bg-amber-500'],['keep','Keep','bg-yellow-400']];
                 document.getElementById('storageBreakdownRows').innerHTML = defs.map(([k,n,c]) => {
-                    const bytes=d.categories[k], pct=bytes/STORAGE_DISPLAY_TARGET*100;
-                    return `<div><div class="flex justify-between text-xs mb-1"><b>${n}</b><span>${pct.toFixed(4)}% · ${formatBytes(bytes)}</span></div><div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${c}" style="width:${Math.min(100,pct)}%"></div></div></div>`;
+                    const bytes=d.categories[k], pct=d.used ? bytes/d.used*100 : 0;
+                    return `<div><div class="flex justify-between text-xs mb-1"><b>${n}</b><span>${pct.toFixed(1)}% of used · ${formatBytes(bytes)}</span></div><div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${c}" style="width:${Math.min(100,pct)}%"></div></div></div>`;
                 }).join('') + `<div class="flex justify-between border-t pt-3 text-xs"><b>Empty</b><b>${d.emptyPct.toFixed(4)}%</b></div>`;
             }
             function updateStorageMeter() {
