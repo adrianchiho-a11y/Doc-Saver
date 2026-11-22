@@ -2961,12 +2961,14 @@
                             e.stopPropagation();
                             textBody.contentEditable = 'true';
                             textBody.style.cursor = 'text';
+                            textBody.style.userSelect = 'text';
                             textBody.focus();
                         });
 
                         textBody.addEventListener('blur', () => {
                             textBody.contentEditable = 'false';
                             textBody.style.cursor = 'move';
+                            textBody.style.userSelect = 'none';
                             el.text = textBody.innerText;
                             item.updatedAt = new Date().toISOString();
                             renderSlideEditor(item);
@@ -4262,7 +4264,15 @@
                 if (!elObj) return;
 
                 selectedElementId = elId;
-                renderSlideEditor(item);
+
+                // Keep text elements in the DOM when selecting them. Re-rendering here
+                // destroys the element between the two clicks of a double-click, so
+                // the text editor never receives its dblclick event.
+                if (elObj.type === 'text') {
+                    elWrapper.classList.add('selected');
+                } else {
+                    renderSlideEditor(item);
+                }
 
                 // Do not drag if user is actively typing inside a contentEditable text box
                 if (e.target.isContentEditable) return;
