@@ -991,6 +991,10 @@
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                     <span id="editorAccountNameText">Account</span>
                 </span>
+                <button type="button" id="editorAiButton"
+                    class="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-violet-100 hover:bg-violet-200 text-violet-800 transition cursor-pointer">
+                    ✨ Doc Saver AI
+                </button>
                 <button type="button" id="editorSecondaryActionBtn"
                     class="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer">
                     Export
@@ -1459,6 +1463,33 @@
         </div>
     </div>
 
+    <!-- Doc Saver AI Assistant -->
+    <div id="docSaverAiModal" class="fixed inset-0 z-[70] hidden items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
+        <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl border border-slate-200">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+                <div><h2 class="text-lg font-bold text-slate-900">✨ Doc Saver AI</h2><p id="docSaverAiEditorType" class="text-xs text-slate-500 mt-0.5">Your AI assistant</p></div>
+                <button type="button" id="docSaverAiClose" class="p-2 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Close AI assistant">✕</button>
+            </div>
+            <div class="p-5 space-y-4">
+                <label for="docSaverAiPrompt" class="block text-sm font-semibold text-slate-800">What would you like the AI to do?</label>
+                <textarea id="docSaverAiPrompt" rows="4" maxlength="2000" class="w-full rounded-xl border border-slate-300 p-3 text-sm text-slate-800 select-text focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="Example: Fix spelling and grammar, make this clearer, summarize this spreadsheet, or improve the wording on my slides."></textarea>
+                <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <label class="flex items-start gap-2.5 text-sm text-slate-800 cursor-pointer">
+                        <input id="docSaverAiConsent" type="checkbox" class="mt-1 h-4 w-4 accent-violet-600 shrink-0">
+                        <span><strong>I agree that Doc Saver AI may change my document. We are not responsible for documents that are ruined after the AI changes your document.</strong><span class="block mt-1 text-xs text-slate-600 font-normal">Leave this unchecked if you only want suggestions. When checked, the AI may directly replace content in this open file.</span></span>
+                    </label>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" id="docSaverAiRun" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold">Ask Doc Saver AI</button>
+                    <button type="button" id="docSaverAiUndo" class="hidden px-4 py-2 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold">Undo AI Changes</button>
+                    <span id="docSaverAiStatus" class="text-xs text-slate-500"></span>
+                </div>
+                <div id="docSaverAiResult" class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 whitespace-pre-wrap select-text"></div>
+                <p class="text-[11px] leading-relaxed text-slate-500">AI can make mistakes. Review important changes. AI requests are sent securely to Doc Saver's Firebase backend and OpenAI for processing. Do not submit passwords or other sensitive information.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification Banner -->
     <div id="toastBanner"
         class="fixed bottom-5 left-5 z-50 transform translate-y-16 opacity-0 transition-all duration-300 pointer-events-none bg-slate-900 text-white text-xs sm:text-sm font-medium px-4 py-3 rounded-xl shadow-lg flex items-center gap-2">
@@ -1467,6 +1498,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-functions.js";
         import {
             getAuth, GoogleAuthProvider, signInWithPopup,
             createUserWithEmailAndPassword, signInWithEmailAndPassword,
@@ -1491,6 +1523,8 @@
         const firebaseApp = initializeApp(firebaseConfig);
         const firebaseAuth = getAuth(firebaseApp);
         const firestoreDb = getFirestore(firebaseApp);
+        const aiFunctions = getFunctions(firebaseApp, "us-central1");
+        const callDocSaverAI = httpsCallable(aiFunctions, "docSaverAI", { timeout: 90000 });
         const googleProvider = new GoogleAuthProvider();
         googleProvider.setCustomParameters({ prompt: 'select_account' });
 
@@ -5261,7 +5295,122 @@
             }
 
             // =========================================================================
-            // 15. BOOTSTRAP & SESSION RESTORATION
+                        // =========================================================================
+            // DOC SAVER AI — shared assistant for Docs, Sheets, and Slides
+            // =========================================================================
+            const docSaverAiModal = document.getElementById('docSaverAiModal');
+            const docSaverAiPrompt = document.getElementById('docSaverAiPrompt');
+            const docSaverAiConsent = document.getElementById('docSaverAiConsent');
+            const docSaverAiRun = document.getElementById('docSaverAiRun');
+            const docSaverAiUndo = document.getElementById('docSaverAiUndo');
+            const docSaverAiResult = document.getElementById('docSaverAiResult');
+            const docSaverAiStatus = document.getElementById('docSaverAiStatus');
+            let docSaverAiLastChangeApplied = false;
+
+            function closeDocSaverAi() {
+                docSaverAiModal.classList.add('hidden');
+                docSaverAiModal.classList.remove('flex');
+            }
+
+            document.getElementById('editorAiButton').addEventListener('click', () => {
+                const item = items.find(i => i.id === activeEditorItemId && !i.trashed);
+                if (!item || !['doc', 'sheet', 'slide'].includes(item.type)) {
+                    showToast('Open a document, sheet, or slide first.');
+                    return;
+                }
+                const labels = { doc: 'Docs editor', sheet: 'Sheets editor', slide: 'Slides editor' };
+                document.getElementById('docSaverAiEditorType').textContent = labels[item.type] + ' · ' + (item.name || 'Untitled');
+                docSaverAiPrompt.value = '';
+                docSaverAiConsent.checked = false;
+                docSaverAiResult.classList.add('hidden');
+                docSaverAiResult.textContent = '';
+                docSaverAiStatus.textContent = '';
+                docSaverAiUndo.classList.add('hidden');
+                docSaverAiLastChangeApplied = false;
+                docSaverAiRun.disabled = false;
+                docSaverAiRun.textContent = 'Ask Doc Saver AI';
+                docSaverAiModal.classList.remove('hidden');
+                docSaverAiModal.classList.add('flex');
+                docSaverAiPrompt.focus();
+            });
+
+            document.getElementById('docSaverAiClose').addEventListener('click', closeDocSaverAi);
+            docSaverAiModal.addEventListener('click', (event) => {
+                if (event.target === docSaverAiModal) closeDocSaverAi();
+            });
+
+            docSaverAiRun.addEventListener('click', async () => {
+                const item = items.find(i => i.id === activeEditorItemId && !i.trashed);
+                const instruction = docSaverAiPrompt.value.trim();
+                const allowChanges = docSaverAiConsent.checked;
+                if (!item || !['doc', 'sheet', 'slide'].includes(item.type)) {
+                    docSaverAiStatus.textContent = 'Open a supported editor first.';
+                    return;
+                }
+                if (!instruction) {
+                    docSaverAiStatus.textContent = 'Type what you want the AI to do.';
+                    docSaverAiPrompt.focus();
+                    return;
+                }
+                let documentData;
+                if (item.type === 'doc') documentData = item.content || '<p></p>';
+                else if (item.type === 'sheet') { ensureSheetStructure(item); documentData = item.sheetData; }
+                else { ensureSlidesStructure(item); documentData = item.slides || []; }
+
+                docSaverAiRun.disabled = true;
+                docSaverAiRun.textContent = 'Working...';
+                docSaverAiStatus.textContent = 'Sending your request securely...';
+                docSaverAiResult.classList.add('hidden');
+                docSaverAiUndo.classList.add('hidden');
+                try {
+                    const response = await callDocSaverAI({ type: item.type, instruction, allowChanges, document: documentData });
+                    const result = response.data || {};
+                    docSaverAiResult.textContent = result.message || 'The AI finished without a message.';
+                    docSaverAiResult.classList.remove('hidden');
+                    if (allowChanges && result.changed === true && result.updatedDocument !== undefined) {
+                        lastEditorHistorySnapshot = JSON.stringify(item);
+                        if (item.type === 'doc') {
+                            item.content = sanitizeRichHTML(String(result.updatedDocument || '<p></p>'));
+                            document.getElementById('richDocSurface').innerHTML = item.content;
+                            updateDocWordCount();
+                        } else if (item.type === 'sheet') {
+                            item.sheetData = result.updatedDocument;
+                            ensureSheetStructure(item);
+                            renderSpreadsheetGrid(item);
+                        } else {
+                            item.slides = result.updatedDocument;
+                            ensureSlidesStructure(item);
+                            currentSlideIdx = Math.min(currentSlideIdx, Math.max(0, item.slides.length - 1));
+                            selectedElementId = null;
+                            renderSlideEditor(item);
+                        }
+                        item.updatedAt = new Date().toISOString();
+                        markEditorSaving();
+                        docSaverAiLastChangeApplied = true;
+                        docSaverAiUndo.classList.remove('hidden');
+                        docSaverAiStatus.textContent = 'Changes applied and saving. You can undo them.';
+                    } else {
+                        docSaverAiStatus.textContent = 'Suggestions only. Your document was not changed.';
+                    }
+                } catch (error) {
+                    console.error('Doc Saver AI error:', error);
+                    docSaverAiStatus.textContent = error?.message || 'Doc Saver AI could not complete the request.';
+                } finally {
+                    docSaverAiRun.disabled = false;
+                    docSaverAiRun.textContent = 'Ask Doc Saver AI';
+                }
+            });
+
+            docSaverAiUndo.addEventListener('click', () => {
+                if (!docSaverAiLastChangeApplied) return;
+                if (undoEditorChange()) {
+                    docSaverAiLastChangeApplied = false;
+                    docSaverAiUndo.classList.add('hidden');
+                    docSaverAiStatus.textContent = 'AI changes undone. Your previous version is being saved.';
+                } else docSaverAiStatus.textContent = 'There is no AI change available to undo.';
+            });
+
+// 15. BOOTSTRAP & SESSION RESTORATION
             // =========================================================================
             async function bootstrap() {
                 // Wait for Firebase to restore its saved sign-in session before checking Doc Saver's local session.
