@@ -1427,6 +1427,24 @@
                     </div>
                     <button id="settingsSendEmailCodeBtn" type="button" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold">Send verification code</button>
                 </section>
+                <section class="p-4 rounded-2xl border border-blue-200 bg-blue-50/40">
+                    <div class="flex items-center gap-2 mb-1"><span class="text-lg">🔐</span><h3 class="text-sm font-bold text-slate-900">Backup</h3></div>
+                    <p class="text-xs text-slate-600 mb-3">Download an encrypted Doc Saver backup of your Docs, Sheets, Slides, Keeps, and folders to this device. Regular files are not included.</p>
+                    <label for="backupScheduleSelect" class="block text-xs font-semibold text-slate-700 mb-1">Automatic backup frequency</label>
+                    <select id="backupScheduleSelect" class="w-full px-3 py-2 mb-2 rounded-xl border border-slate-300 bg-white text-sm">
+                        <option value="off">Off</option>
+                        <option value="daily">Every day</option>
+                        <option value="weekly" selected>Every week</option>
+                        <option value="monthly">Every month</option>
+                    </select>
+                    <p id="backupLastRunText" class="text-[11px] text-slate-500 mb-3">Automatic backups run while Doc Saver is open.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button id="backupNowBtn" type="button" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">Back Up Now</button>
+                        <label for="backupUploadInput" class="px-4 py-2 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 text-blue-700 text-xs font-semibold cursor-pointer">Upload Backup</label>
+                        <input id="backupUploadInput" type="file" accept=".dsbackup,application/octet-stream,text/plain" class="hidden">
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-2">Uploads replace the current workspace after confirmation. Only valid encrypted Doc Saver backup files are accepted.</p>
+                </section>
                 <section class="p-4 rounded-2xl border border-slate-200 flex items-center justify-between gap-3">
                     <div><h3 class="text-sm font-bold text-slate-900">Upgrade</h3><p class="text-xs text-slate-500">Premium features and extra storage</p></div>
                     <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">In Beta</span>
@@ -2602,6 +2620,7 @@
                 document.getElementById('dropdownProviderBadge').textContent = savedProfile.provider;
 
                 await loadUserWorkspace(savedProfile);
+                startBackupScheduler();
 
                 closeAuthPopup();
                 document.getElementById('authGateOverlay').classList.add('hidden');
@@ -4019,6 +4038,131 @@
                     ...patch, updatedAt: serverTimestamp()
                 }, { merge: true });
             }
+
+
+            // =========================================================================
+            // ENCRYPTED LOCAL BACKUPS (.dsbackup)
+            // Backups use the same AES-GCM account vault format and can only be imported
+            // after signing into the matching Doc Saver account.
+            // =========================================================================
+            let backupSchedulerTimer = null;
+            const BACKUP_FILE_HEADER = 'DOCSAVER_BACKUP_V1\\n';
+            function backupStorageKey(kind) {
+                return 'docsaver_backup_' + kind + '_' + normalizeAccountId(currentUser?.email || '');
+            }
+            function backupIntervalMs() {
+                const choice = localStorage.getItem(backupStorageKey('schedule')) || 'weekly';
+                return choice === 'daily' ? 86400000 : choice === 'weekly' ? 604800000 : choice === 'monthly' ? 2592000000 : 0;
+            }
+            function updateBackupLastRunText() {
+                const el = document.getElementById('backupLastRunText');
+                if (!el || !currentUser) return;
+                const last = Number(localStorage.getItem(backupStorageKey('last')) || 0);
+                const schedule = localStorage.getItem(backupStorageKey('schedule')) || 'weekly';
+                el.textContent = (schedule === 'off' ? 'Automatic backups are off.' : 'Automatic backups run while Doc Saver is open.') +
+                    (last ? ' Last downloaded: ' + new Date(last).toLocaleString() : ' No backup downloaded yet.');
+                const select = document.getElementById('backupScheduleSelect');
+                if (select) select.value = schedule;
+            }
+            async function downloadEncryptedBackup(isAutomatic = false) {
+                if (!currentUser) { showToast('Sign in before creating a backup.'); return false; }
+                try {
+                    const accountId = normalizeAccountId(currentUser.email);
+                    const backupItems = items.filter(item => item && ['folder','doc','sheet','slide','keep'].includes(item.type));
+                    const serialized = JSON.stringify(backupItems);
+                    const encrypted = await encryptAccountPayload(accountId, serialized);
+                    if (!encrypted || !encrypted.startsWith('ENC1:')) throw new Error('Encryption failed.');
+                    const contents = BACKUP_FILE_HEADER + encrypted;
+                    const blob = new Blob([contents], { type: 'application/octet-stream' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    const safeName = String(currentUser.name || 'Account').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'Account';
+                    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    link.href = url;
+                    link.download = 'Doc-Saver-Backup-' + safeName + '-' + stamp + '.dsbackup';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                    localStorage.setItem(backupStorageKey('last'), String(Date.now()));
+                    updateBackupLastRunText();
+                    if (!isAutomatic) showToast('Encrypted backup download started.');
+                    return true;
+                } catch (error) {
+                    console.error('Backup download failed:', error);
+                    showToast('Could not create the backup. Please try again.');
+                    return false;
+                }
+            }
+            async function importEncryptedBackup(file) {
+                if (!currentUser || !file) return;
+                if (!file.name.toLowerCase().endsWith('.dsbackup')) {
+                    showToast('Only .dsbackup files from Doc Saver can be uploaded.');
+                    return;
+                }
+                if (file.size > 25 * 1024 * 1024) {
+                    showToast('That backup is larger than the 25 MB upload limit.');
+                    return;
+                }
+                try {
+                    const raw = await file.text();
+                    if (!raw.startsWith(BACKUP_FILE_HEADER)) throw new Error('Not a Doc Saver backup.');
+                    const encrypted = raw.slice(BACKUP_FILE_HEADER.length).trim();
+                    if (!encrypted.startsWith('ENC1:')) throw new Error('Backup encryption format is not recognized.');
+                    const decrypted = await decryptAccountPayload(normalizeAccountId(currentUser.email), encrypted);
+                    if (!decrypted) throw new Error('This backup could not be decrypted for this account.');
+                    const restored = JSON.parse(decrypted);
+                    const allowedTypes = new Set(['folder','doc','sheet','slide','keep']);
+                    if (!Array.isArray(restored) || restored.some(item => !item || typeof item !== 'object' || typeof item.id !== 'string' || !allowedTypes.has(item.type))) {
+                        throw new Error('The backup contents are invalid.');
+                    }
+                    if (new TextEncoder().encode(JSON.stringify(restored)).length > USER_STORAGE_LIMIT_BYTES) {
+                        throw new Error('This backup exceeds the 8 MB Doc Saver account storage limit.');
+                    }
+                    if (!confirm('Restore this backup? This will REPLACE all documents, sheets, slides, keeps, and folders currently in this Doc Saver account.')) return;
+                    const previousItems = items;
+                    items = restored;
+                    const saved = await persistCurrentUserItems();
+                    if (!saved) {
+                        items = previousItems;
+                        throw new Error('The restored backup could not be saved to your Doc Saver cloud account. Your current workspace was kept.');
+                    }
+                    renderDrive();
+                    updateStorageMeter();
+                    showToast('Backup restored successfully.');
+                } catch (error) {
+                    console.error('Backup import failed:', error);
+                    showToast(error.message || 'This backup is invalid or belongs to another account.');
+                } finally {
+                    const input = document.getElementById('backupUploadInput');
+                    if (input) input.value = '';
+                }
+            }
+            function startBackupScheduler() {
+                if (backupSchedulerTimer) clearInterval(backupSchedulerTimer);
+                updateBackupLastRunText();
+                backupSchedulerTimer = setInterval(async () => {
+                    if (!currentUser || document.visibilityState === 'hidden') return;
+                    const interval = backupIntervalMs();
+                    if (!interval) return;
+                    const last = Number(localStorage.getItem(backupStorageKey('last')) || 0);
+                    if (!last || Date.now() - last >= interval) {
+                        // Browsers may ask the user to allow repeated downloads.
+                        await downloadEncryptedBackup(true);
+                    }
+                }, 60000);
+            }
+            document.getElementById('backupNowBtn').addEventListener('click', () => downloadEncryptedBackup(false));
+            document.getElementById('backupScheduleSelect').addEventListener('change', (event) => {
+                if (!currentUser) return;
+                localStorage.setItem(backupStorageKey('schedule'), event.target.value);
+                updateBackupLastRunText();
+                if (event.target.value !== 'off') showToast('Automatic backup schedule saved for this device.');
+            });
+            document.getElementById('backupUploadInput').addEventListener('change', (event) => {
+                const file = event.target.files && event.target.files[0];
+                if (file) importEncryptedBackup(file);
+            });
 
             document.getElementById('openAccountSettingsBtn').addEventListener('click', openAccountSettings);
             document.getElementById('closeAccountSettingsBtn').addEventListener('click', closeAccountSettings);
