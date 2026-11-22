@@ -2089,8 +2089,9 @@
                 // those edits before loading the cloud copy so they are not overwritten.
                 if (navigator.onLine && cloudUid && localVault?.dirty && localVault.payload) {
                     const synced = await syncAccountToCloudServer(cloudUid, localVault.payload);
+                    // Keep the local edits active even if the cloud retry fails.
+                    encrypted = localVault.payload;
                     if (synced) {
-                        encrypted = localVault.payload;
                         try { await markOfflineVaultSynced(accountId); } catch (e) { /* keep local copy */ }
                     }
                 }
