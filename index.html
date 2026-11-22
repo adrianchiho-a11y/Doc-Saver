@@ -3430,7 +3430,7 @@
                         const typeLabel = item.type === 'folder' ? 'Folder' : item.type === 'doc' ? 'Document' : item.type === 'sheet' ? 'Sheet' : item.type === 'keep' ? 'Keep' : 'Slide';
                         cardsHtml += `
                             <div data-item-id="${item.id}"
-                                class="drive-item-card group p-3.5 rounded-2xl bg-[#F8FAFD] hover:bg-[#EDF2FC] border border-slate-200/80 hover:border-blue-200 transition cursor-pointer flex flex-col justify-between">
+                                class="drive-item-card group p-3.5 rounded-2xl bg-[#F8FAFD] hover:bg-[#EDF2FC] border border-slate-200/80 hover:border-blue-200 transition cursor-pointer flex flex-col justify-between" style="background-color:${item.type === 'keep' ? (item.color || '#ffffff') : '#F8FAFD'}">
                                 <div class="flex items-center justify-between gap-2">
                                     <div class="flex items-center gap-2.5 min-w-0">
                                         ${getFileBadgeHtml(item.type)}
