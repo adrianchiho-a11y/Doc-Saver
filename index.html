@@ -5306,6 +5306,8 @@
             const docSaverAiResult = document.getElementById('docSaverAiResult');
             const docSaverAiStatus = document.getElementById('docSaverAiStatus');
             let docSaverAiLastChangeApplied = false;
+            let docSaverAiBeforeSnapshot = '';
+            let docSaverAiAfterSnapshot = '';
 
             function closeDocSaverAi() {
                 docSaverAiModal.classList.add('hidden');
@@ -5327,6 +5329,8 @@
                 docSaverAiStatus.textContent = '';
                 docSaverAiUndo.classList.add('hidden');
                 docSaverAiLastChangeApplied = false;
+                docSaverAiBeforeSnapshot = '';
+                docSaverAiAfterSnapshot = '';
                 docSaverAiRun.disabled = false;
                 docSaverAiRun.textContent = 'Ask Doc Saver AI';
                 docSaverAiModal.classList.remove('hidden');
@@ -5368,7 +5372,8 @@
                     docSaverAiResult.textContent = result.message || 'The AI finished without a message.';
                     docSaverAiResult.classList.remove('hidden');
                     if (allowChanges && result.changed === true && result.updatedDocument !== undefined) {
-                        lastEditorHistorySnapshot = JSON.stringify(item);
+                        docSaverAiBeforeSnapshot = JSON.stringify(item);
+                        lastEditorHistorySnapshot = docSaverAiBeforeSnapshot;
                         if (item.type === 'doc') {
                             item.content = sanitizeRichHTML(String(result.updatedDocument || '<p></p>'));
                             document.getElementById('richDocSurface').innerHTML = item.content;
@@ -5385,6 +5390,7 @@
                             renderSlideEditor(item);
                         }
                         item.updatedAt = new Date().toISOString();
+                        docSaverAiAfterSnapshot = JSON.stringify(item);
                         markEditorSaving();
                         docSaverAiLastChangeApplied = true;
                         docSaverAiUndo.classList.remove('hidden');
@@ -5403,8 +5409,15 @@
 
             docSaverAiUndo.addEventListener('click', () => {
                 if (!docSaverAiLastChangeApplied) return;
+                if (getEditorHistorySnapshot() !== docSaverAiAfterSnapshot) {
+                    docSaverAiStatus.textContent = 'This document has changed since the AI edit. Use the normal Undo command to review recent changes safely.';
+                    docSaverAiUndo.classList.add('hidden');
+                    return;
+                }
                 if (undoEditorChange()) {
                     docSaverAiLastChangeApplied = false;
+                    docSaverAiBeforeSnapshot = '';
+                    docSaverAiAfterSnapshot = '';
                     docSaverAiUndo.classList.add('hidden');
                     docSaverAiStatus.textContent = 'AI changes undone. Your previous version is being saved.';
                 } else docSaverAiStatus.textContent = 'There is no AI change available to undo.';
