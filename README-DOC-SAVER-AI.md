@@ -10,6 +10,7 @@ Doc Saver AI runs through an authenticated Firebase callable Cloud Function. The
 - A one-step **Undo AI Changes** action immediately after an AI edit.
 - Firebase Authentication is required before the callable function will run.
 - The callable function validates the editor type and payload size before sending data to OpenAI.
+- Each signed-in account is limited to 30 AI requests per UTC day by default to help control API costs.
 
 ## One-time account setup
 
@@ -111,5 +112,6 @@ After the function deploys, open the GitHub Pages test build using the branch pr
 - The function does not save a separate copy of document contents. The normal Doc Saver save flow stores the result in the user's existing workspace.
 - AI output can be incorrect or destructive. Review important work and keep backups.
 - The consent checkbox is an explicit product confirmation, not a guarantee that a liability disclaimer is legally enforceable.
+- Each signed-in account has a default limit of 30 AI requests per UTC day. This is a safety limit in the backend code and can be adjusted later.
 - API usage is billed separately by OpenAI. Firebase/Google Cloud usage may also be billed under Blaze.
 - Do not merge this branch into `main` until the AI has been tested successfully.
