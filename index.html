@@ -6,6 +6,10 @@
     <title>Doc Saver — Secure Cloud Workspace</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Import converters for Google Drive exports -->
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.9.0/mammoth.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <!-- Google Fonts: Inter & Plus Jakarta Sans -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -850,6 +854,11 @@
                         <button type="button" id="createKeepAction" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-3 cursor-pointer">
                             <span class="w-5 h-5 rounded bg-yellow-400 text-yellow-950 flex items-center justify-center">▤</span><span class="font-medium">Keep</span>
                         </button>
+                        <div class="my-1.5 border-t border-slate-100"></div>
+                        <button type="button" id="openDriveUploadBtn" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-3 cursor-pointer">
+                            <span class="w-5 h-5 rounded bg-violet-600 text-white flex items-center justify-center">↑</span><span class="font-medium">Upload</span>
+                        </button>
+                        <input id="driveUploadInput" type="file" accept=".dsbackup,.docx,.xlsx,.pptx,.csv" multiple class="hidden">
                     </div>
                 </div>
 
@@ -943,6 +952,10 @@
                             <button type="button" data-type-filter="keep"
                                 class="type-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center gap-1.5 transition shrink-0 cursor-pointer">
                                 <span class="w-2 h-2 rounded-full bg-yellow-400"></span> Keep
+                            </button>
+                            <button type="button" data-type-filter="upload"
+                                class="type-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center gap-1.5 transition shrink-0 cursor-pointer">
+                                <span class="w-2 h-2 rounded-full bg-violet-600"></span> Upload
                             </button>
                         </div>
 
@@ -3459,7 +3472,9 @@
                     return (it.parentId || 'root') === currentFolderId;
                 });
 
-                if (currentTypeFilter !== 'all') {
+                if (currentTypeFilter === 'upload') {
+                    filtered = filtered.filter(it => Boolean(it.importedUpload));
+                } else if (currentTypeFilter !== 'all') {
                     filtered = filtered.filter(it => it.type === currentTypeFilter);
                 }
 
@@ -4144,7 +4159,7 @@
             async function importEncryptedBackup(file) {
                 if (!currentUser || !file) return;
                 if (!file.name.toLowerCase().endsWith('.dsbackup')) {
-                    showToast('Only .dsbackup files from Doc Saver can be uploaded.');
+                    showToast('Unsupported format');
                     return;
                 }
                 if (file.size > 25 * 1024 * 1024) {
@@ -4155,7 +4170,7 @@
                     const raw = await file.text();
                     const isItemBackup = raw.startsWith(ITEM_BACKUP_FILE_HEADER);
                     const matchedHeader = isItemBackup ? ITEM_BACKUP_FILE_HEADER : BACKUP_FILE_HEADER;
-                    if (!raw.startsWith(matchedHeader)) throw new Error('Not a Doc Saver backup.');
+                    if (!raw.startsWith(matchedHeader)) throw new Error('This is not a valid Doc Saver backup.');
                     const encrypted = raw.slice(matchedHeader.length).trim();
                     if (!encrypted.startsWith('ENC1:')) throw new Error('Backup encryption format is not recognized.');
                     const decrypted = await decryptAccountPayload(normalizeAccountId(currentUser.email), encrypted);
@@ -4192,7 +4207,122 @@
                 } finally {
                     const input = document.getElementById('backupUploadInput');
                     if (input) input.value = '';
+                    const driveInput = document.getElementById('driveUploadInput');
+                    if (driveInput) driveInput.value = '';
                 }
+            }
+
+            function importedBaseItem(type, name) {
+                return {
+                    id: generateId(type), type, name,
+                    parentId: currentNav === 'drive' ? currentFolderId : 'root',
+                    starred: false, trashed: false, importedUpload: true,
+                    updatedAt: new Date().toISOString()
+                };
+            }
+
+            async function importGoogleDriveExport(file) {
+                const extension = file.name.split('.').pop().toLowerCase();
+                if (!['docx','xlsx','pptx','csv'].includes(extension)) {
+                    showToast('Unsupported format');
+                    return;
+                }
+                if (file.size > 25 * 1024 * 1024) {
+                    showToast('This file is larger than the 25 MB upload limit.');
+                    return;
+                }
+                if (typeof XLSX === 'undefined' || typeof mammoth === 'undefined' || typeof JSZip === 'undefined') {
+                    showToast('The file converters could not load. Refresh the page and try again.');
+                    return;
+                }
+                try {
+                    const baseName = file.name.replace(/\.[^.]+$/, '') || 'Imported file';
+                    let newItem;
+                    if (extension === 'docx') {
+                        const result = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+                        const html = sanitizeRichHTML(result.value || '<p></p>');
+                        newItem = importedBaseItem('doc', baseName);
+                        newItem.content = html;
+                    } else if (extension === 'xlsx' || extension === 'csv') {
+                        const buffer = extension === 'csv' ? await file.text() : await file.arrayBuffer();
+                        const workbook = XLSX.read(buffer, { type: extension === 'csv' ? 'string' : 'array', cellDates: false });
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        if (!firstSheet) throw new Error('The spreadsheet has no worksheet.');
+                        const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false, defval: '' });
+                        newItem = importedBaseItem('sheet', baseName);
+                        newItem.sheetData = { cells: {}, styles: {}, colWidths: {}, rowHeights: {} };
+                        rows.slice(0, 40).forEach((row, r) => (row || []).slice(0, 20).forEach((value, c) => {
+                            if (value !== '' && value !== null && value !== undefined) newItem.sheetData.cells[cellKey(c, r)] = String(value);
+                        }));
+                    } else if (extension === 'pptx') {
+                        const zip = await JSZip.loadAsync(await file.arrayBuffer());
+                        const slidePaths = Object.keys(zip.files).filter(path => /^ppt\/slides\/slide\d+\.xml$/.test(path))
+                            .sort((a,b) => Number(a.match(/slide(\d+)/)[1]) - Number(b.match(/slide(\d+)/)[1]));
+                        if (!slidePaths.length) throw new Error('No slides were found in this presentation.');
+                        newItem = importedBaseItem('slide', baseName);
+                        newItem.slides = [];
+                        for (const path of slidePaths.slice(0, 100)) {
+                            const xmlText = await zip.files[path].async('text');
+                            const xml = new DOMParser().parseFromString(xmlText, 'application/xml');
+                            const shapes = Array.from(xml.getElementsByTagNameNS('*', 'sp'));
+                            const elements = [];
+                            for (const shape of shapes) {
+                                const textValue = Array.from(shape.getElementsByTagNameNS('*', 't')).map(node => node.textContent || '').join('');
+                                if (!textValue.trim()) continue;
+                                const xfrm = shape.getElementsByTagNameNS('*', 'xfrm')[0];
+                                const off = xfrm?.getElementsByTagNameNS('*', 'off')[0];
+                                const ext = xfrm?.getElementsByTagNameNS('*', 'ext')[0];
+                                const x = off ? Math.max(2, Math.min(92, Number(off.getAttribute('x')) / 914400 / 13.333 * 100)) : 8;
+                                const y = off ? Math.max(2, Math.min(88, Number(off.getAttribute('y')) / 914400 / 7.5 * 100)) : Math.min(80, 12 + elements.length * 16);
+                                const w = ext ? Math.max(8, Math.min(95 - x, Number(ext.getAttribute('cx')) / 914400 / 13.333 * 100)) : 80;
+                                const h = ext ? Math.max(6, Math.min(90 - y, Number(ext.getAttribute('cy')) / 914400 / 7.5 * 100)) : 14;
+                                elements.push({ id: generateId('el'), type: 'text', x, y, w, h, text: textValue, fontSize: 22, bold: false, italic: false, color: '#1e293b', fill: 'transparent', align: 'left' });
+                            }
+                            newItem.slides.push({ id: generateId('sld'), theme: 'classic', customBg: '', transition: 'none', notes: '', elements: elements.length ? elements : [{ id: generateId('el'), type: 'text', x: 8, y: 12, w: 84, h: 18, text: 'Empty slide', fontSize: 24, bold: true, italic: false, color: '#1e293b', fill: 'transparent', align: 'left' }] });
+                        }
+                    }
+                    const currentBytes = new TextEncoder().encode(JSON.stringify(items)).length;
+                    const addedBytes = new TextEncoder().encode(JSON.stringify(newItem)).length;
+                    if (currentBytes + addedBytes > USER_STORAGE_LIMIT_BYTES) {
+                        showToast('You have reached this account\'s 8 MB storage limit. Delete items to make room.');
+                        return;
+                    }
+                    items.unshift(newItem);
+                    const saved = await persistCurrentUserItems();
+                    if (!saved) {
+                        items = items.filter(item => item.id !== newItem.id);
+                        showToast('The imported file could not be saved to your cloud account.');
+                        return;
+                    }
+                    currentNav = 'drive';
+                    currentTypeFilter = 'upload';
+                    document.querySelectorAll('.type-chip').forEach(chip => {
+                        chip.className = 'type-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center gap-1.5 transition shrink-0 cursor-pointer';
+                    });
+                    const uploadChip = document.querySelector('[data-type-filter="upload"]');
+                    if (uploadChip) uploadChip.className = 'type-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-[#C2E7FF] text-slate-900 transition shrink-0 cursor-pointer';
+                    renderDrive();
+                    updateStorageMeter();
+                    showToast('Imported as an editable ' + (newItem.type === 'doc' ? 'Doc' : newItem.type === 'sheet' ? 'Sheet' : 'Slide') + '.');
+                    openItemInRealBrowserTab(newItem);
+                } catch (error) {
+                    console.error('Google Drive import failed:', error);
+                    showToast(error.message || 'Could not import this file.');
+                }
+            }
+
+            async function handleDriveUpload(file) {
+                if (!file) return;
+                const extension = file.name.split('.').pop().toLowerCase();
+                if (extension === 'dsbackup') {
+                    await importEncryptedBackup(file);
+                    return;
+                }
+                if (!['docx','xlsx','pptx','csv'].includes(extension)) {
+                    showToast('Unsupported format');
+                    return;
+                }
+                await importGoogleDriveExport(file);
             }
             function startBackupScheduler() {
                 if (backupSchedulerTimer) clearInterval(backupSchedulerTimer);
@@ -4209,6 +4339,15 @@
                 }, 60000);
             }
             document.getElementById('backupNowBtn').addEventListener('click', () => downloadEncryptedBackup(false));
+            document.getElementById('openDriveUploadBtn').addEventListener('click', () => {
+                document.getElementById('newDropdownMenu').classList.add('hidden');
+                document.getElementById('driveUploadInput').click();
+            });
+            document.getElementById('driveUploadInput').addEventListener('change', async event => {
+                const selected = Array.from(event.target.files || []);
+                for (const file of selected) await handleDriveUpload(file);
+                event.target.value = '';
+            });
             document.getElementById('backupScheduleSelect').addEventListener('change', (event) => {
                 if (!currentUser) return;
                 localStorage.setItem(backupStorageKey('schedule'), event.target.value);
