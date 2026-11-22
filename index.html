@@ -1345,6 +1345,9 @@
         <button type="button" data-action="rename" class="ctx-action w-full px-4 py-2 text-left hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer">
             <span>Rename</span>
         </button>
+        <button type="button" data-action="download" class="ctx-action w-full px-4 py-2 text-left hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer">
+            <span>Download</span>
+        </button>
         <button type="button" data-action="restore" class="ctx-action w-full px-4 py-2 text-left hover:bg-emerald-50 text-emerald-700 flex items-center gap-2.5 cursor-pointer">
             <span>Restore from Trash</span>
         </button>
@@ -2754,7 +2757,7 @@
                 if (item.type === 'doc') {
                     iconEl.className = 'w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0';
                     iconEl.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h10"/></svg>`;
-                    secBtn.textContent = 'Export .HTML';
+                    secBtn.classList.add('hidden');
                     priBtn.textContent = 'Save Document';
                     priBtn.className = 'px-4 py-1.5 rounded-full text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition cursor-pointer';
 
@@ -2765,6 +2768,7 @@
                 } else if (item.type === 'sheet') {
                     iconEl.className = 'w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0';
                     iconEl.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M10 3v18M14 3v18"/></svg>`;
+                    secBtn.classList.remove('hidden');
                     secBtn.textContent = 'Export .CSV';
                     priBtn.textContent = 'Save Sheet';
                     priBtn.className = 'px-4 py-1.5 rounded-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer';
@@ -2774,6 +2778,7 @@
                 } else if (item.type === 'slide') {
                     iconEl.className = 'w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-white shrink-0';
                     iconEl.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path stroke-linecap="round" d="M8 10h8"/></svg>`;
+                    secBtn.classList.remove('hidden');
                     secBtn.textContent = 'Save Slides';
                     priBtn.textContent = '▶ Present';
                     priBtn.className = 'px-4 py-1.5 rounded-full text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition cursor-pointer';
@@ -3598,11 +3603,12 @@
                 menu.querySelector('[data-action="open"]').classList.toggle('hidden', Boolean(item.trashed));
                 menu.querySelector('[data-action="star"]').classList.toggle('hidden', Boolean(item.trashed));
                 menu.querySelector('[data-action="rename"]').classList.toggle('hidden', Boolean(item.trashed));
+                menu.querySelector('[data-action="download"]').classList.toggle('hidden', Boolean(item.trashed));
                 menu.querySelector('[data-action="restore"]').classList.toggle('hidden', !item.trashed);
 
                 menu.classList.remove('hidden');
                 const left = Math.min(window.innerWidth - 230, Math.max(8, clientX));
-                const top = Math.min(window.innerHeight - 240, Math.max(8, clientY));
+                const top = Math.min(window.innerHeight - 280, Math.max(8, clientY));
                 menu.style.left = `${left}px`;
                 menu.style.top = `${top}px`;
             }
@@ -4047,6 +4053,7 @@
             // =========================================================================
             let backupSchedulerTimer = null;
             const BACKUP_FILE_HEADER = 'DOCSAVER_BACKUP_V1\\n';
+            const ITEM_BACKUP_FILE_HEADER = 'DOCSAVER_ITEM_V1\\n';
             function backupStorageKey(kind) {
                 return 'docsaver_backup_' + kind + '_' + normalizeAccountId(currentUser?.email || '');
             }
@@ -4094,6 +4101,46 @@
                     return false;
                 }
             }
+            async function downloadEncryptedItemBackup(itemId) {
+                if (!currentUser) { showToast('Sign in before downloading an item.'); return false; }
+                const selected = items.find(item => item.id === itemId);
+                if (!selected || selected.trashed) return false;
+                try {
+                    const included = new Set([selected.id]);
+                    if (selected.type === 'folder') {
+                        let changed = true;
+                        while (changed) {
+                            changed = false;
+                            for (const candidate of items) {
+                                if (candidate.parentId && included.has(candidate.parentId) && !included.has(candidate.id)) {
+                                    included.add(candidate.id);
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                    const backupItems = items.filter(item => included.has(item.id) && item && ['folder','doc','sheet','slide','keep'].includes(item.type));
+                    const payload = JSON.stringify({ kind: 'item', items: backupItems });
+                    const encrypted = await encryptAccountPayload(normalizeAccountId(currentUser.email), payload);
+                    if (!encrypted || !encrypted.startsWith('ENC1:')) throw new Error('Encryption failed.');
+                    const blob = new Blob([ITEM_BACKUP_FILE_HEADER + encrypted], { type: 'application/octet-stream' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    const safeName = String(selected.name || 'Item').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'Item';
+                    link.href = url;
+                    link.download = safeName + '.dsbackup';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                    showToast('Encrypted .dsbackup download started.');
+                    return true;
+                } catch (error) {
+                    console.error('Item backup download failed:', error);
+                    showToast('Could not download this item. Please try again.');
+                    return false;
+                }
+            }
             async function importEncryptedBackup(file) {
                 if (!currentUser || !file) return;
                 if (!file.name.toLowerCase().endsWith('.dsbackup')) {
@@ -4106,22 +4153,31 @@
                 }
                 try {
                     const raw = await file.text();
-                    if (!raw.startsWith(BACKUP_FILE_HEADER)) throw new Error('Not a Doc Saver backup.');
-                    const encrypted = raw.slice(BACKUP_FILE_HEADER.length).trim();
+                    const isItemBackup = raw.startsWith(ITEM_BACKUP_FILE_HEADER);
+                    const matchedHeader = isItemBackup ? ITEM_BACKUP_FILE_HEADER : BACKUP_FILE_HEADER;
+                    if (!raw.startsWith(matchedHeader)) throw new Error('Not a Doc Saver backup.');
+                    const encrypted = raw.slice(matchedHeader.length).trim();
                     if (!encrypted.startsWith('ENC1:')) throw new Error('Backup encryption format is not recognized.');
                     const decrypted = await decryptAccountPayload(normalizeAccountId(currentUser.email), encrypted);
                     if (!decrypted) throw new Error('This backup could not be decrypted for this account.');
-                    const restored = JSON.parse(decrypted);
+                    const decoded = JSON.parse(decrypted);
                     const allowedTypes = new Set(['folder','doc','sheet','slide','keep']);
+                    const restored = isItemBackup ? decoded?.items : decoded;
                     if (!Array.isArray(restored) || restored.some(item => !item || typeof item !== 'object' || typeof item.id !== 'string' || !allowedTypes.has(item.type))) {
                         throw new Error('The backup contents are invalid.');
                     }
-                    if (new TextEncoder().encode(JSON.stringify(restored)).length > USER_STORAGE_LIMIT_BYTES) {
-                        throw new Error('This backup exceeds the 8 MB Doc Saver account storage limit.');
-                    }
-                    if (!confirm('Restore this backup? This will REPLACE all documents, sheets, slides, keeps, and folders currently in this Doc Saver account.')) return;
                     const previousItems = items;
-                    items = restored;
+                    const nextItems = isItemBackup
+                        ? [...items.filter(existing => !restored.some(incoming => incoming.id === existing.id)), ...restored]
+                        : restored;
+                    if (new TextEncoder().encode(JSON.stringify(nextItems)).length > USER_STORAGE_LIMIT_BYTES) {
+                        throw new Error('Restoring this backup would exceed the 8 MB Doc Saver account storage limit.');
+                    }
+                    const confirmation = isItemBackup
+                        ? 'Restore this item backup? Matching items with the same IDs will be replaced. All other items in your account will stay.'
+                        : 'Restore this backup? This will REPLACE all documents, sheets, slides, keeps, and folders currently in this Doc Saver account.';
+                    if (!confirm(confirmation)) return;
+                    items = nextItems;
                     const saved = await persistCurrentUserItems();
                     if (!saved) {
                         items = previousItems;
@@ -4129,7 +4185,7 @@
                     }
                     renderDrive();
                     updateStorageMeter();
-                    showToast('Backup restored successfully.');
+                    showToast(isItemBackup ? 'Item backup restored successfully.' : 'Backup restored successfully.');
                 } catch (error) {
                     console.error('Backup import failed:', error);
                     showToast(error.message || 'This backup is invalid or belongs to another account.');
@@ -4516,6 +4572,8 @@
                         await persistCurrentUserItems();
                         renderDrive();
                         showToast(item.starred ? 'Added to Starred' : 'Removed from Starred');
+                    } else if (action === 'download') {
+                        await downloadEncryptedItemBackup(item.id);
                     } else if (action === 'rename') {
                         const newName = await promptNameDialog({
                             title: 'Rename',
