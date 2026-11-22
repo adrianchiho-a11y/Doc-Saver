@@ -9,6 +9,7 @@ const openAiApiKey = defineSecret("OPENAI_API_KEY");
 const MAX_INSTRUCTION_CHARS = 2000;
 const MAX_DOCUMENT_CHARS = 60000;
 const MODEL = "gpt-4.1-mini";
+const DAILY_REQUEST_LIMIT = 30;
 
 function safeJson(value) {
   try {
@@ -16,6 +17,29 @@ function safeJson(value) {
   } catch {
     throw new HttpsError("invalid-argument", "The document could not be read.");
   }
+}
+
+async function consumeDailyQuota(uid) {
+  const db = admin.firestore();
+  const ref = db.collection("docSaverAiUsage").doc(uid);
+  const day = new Date().toISOString().slice(0, 10);
+
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const saved = snapshot.exists ? snapshot.data() : {};
+    const used = saved.day === day ? Number(saved.count || 0) : 0;
+    if (used >= DAILY_REQUEST_LIMIT) {
+      throw new HttpsError(
+        "resource-exhausted",
+        "You have reached today's Doc Saver AI limit. Please try again tomorrow."
+      );
+    }
+    transaction.set(ref, {
+      day,
+      count: used + 1,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
 }
 
 function buildInstructions(type, allowChanges) {
@@ -72,6 +96,8 @@ exports.docSaverAI = onCall(
     if (documentJson.length > MAX_DOCUMENT_CHARS) {
       throw new HttpsError("resource-exhausted", "This document is too large for one AI request. Try a smaller section.");
     }
+
+    await consumeDailyQuota(request.auth.uid);
 
     const apiKey = openAiApiKey.value();
     if (!apiKey) {
