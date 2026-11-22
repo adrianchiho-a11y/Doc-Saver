@@ -88,6 +88,11 @@
             outline: 2px solid #2563eb;
             outline-offset: 1px;
         }
+        .slide-element [contenteditable="true"] {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            cursor: text !important;
+        }
         .slide-resize-handle {
             position: absolute;
             width: 10px;
@@ -4265,11 +4270,15 @@
 
                 selectedElementId = elId;
 
-                // Keep text elements in the DOM when selecting them. Re-rendering here
-                // destroys the element between the two clicks of a double-click, so
-                // the text editor never receives its dblclick event.
+                // Text elements must not start a drag operation on click.
+                // The mouseup handler re-renders after every drag operation, even a
+                // zero-distance click, which interrupts the browser's double-click.
+                // Select the text box without rebuilding the canvas; its dblclick
+                // handler can then reliably turn on contentEditable.
                 if (elObj.type === 'text') {
                     elWrapper.classList.add('selected');
+                    if (e.target.closest('[contenteditable="true"]')) return;
+                    return;
                 } else {
                     renderSlideEditor(item);
                 }
