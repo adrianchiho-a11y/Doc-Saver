@@ -141,8 +141,19 @@
             display: none !important;
         }
     </style>
+
+    <link rel="manifest" href="./manifest.webmanifest">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Doc Saver">
+    <link rel="apple-touch-icon" href="./icons/doc-saver-icon.svg">
+
 </head>
 <body class="h-screen w-screen flex flex-col overflow-hidden select-none bg-[#F8FAFD]">
+
+    <div id="offlineStatusPill" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] rounded-full bg-amber-100 text-amber-900 border border-amber-300 px-4 py-2 text-xs font-semibold shadow-lg" role="status" aria-live="polite">Offline • Changes save on this device</div>
+
 
     <!-- ===================================================================== -->
     <!-- 0. ACCOUNT LOGIN GATE (DOC SAVER ACCOUNT + GOOGLE)        -->
@@ -1517,6 +1528,21 @@
         <span id="toastText">Saved</span>
     </div>
 
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .catch(error => console.warn('Doc Saver offline setup could not start:', error));
+            });
+        }
+        function updateDocSaverNetworkStatus() {
+            const pill = document.getElementById('offlineStatusPill');
+            if (pill) pill.classList.toggle('hidden', navigator.onLine);
+        }
+        window.addEventListener('online', updateDocSaverNetworkStatus);
+        window.addEventListener('offline', updateDocSaverNetworkStatus);
+        document.addEventListener('DOMContentLoaded', updateDocSaverNetworkStatus);
+    </script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
         import {
@@ -2007,14 +2033,61 @@
                 return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
             }
 
+            // Encrypted local vault mirror for offline use. IndexedDB can hold the full 8 MB account vault.
+            const OFFLINE_DB_NAME = 'DocSaverOfflineVault';
+            const OFFLINE_DB_VERSION = 1;
+            function openOfflineVaultDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+                    request.onupgradeneeded = () => {
+                        const db = request.result;
+                        if (!db.objectStoreNames.contains('vaults')) db.createObjectStore('vaults', { keyPath: 'accountId' });
+                    };
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error || new Error('Could not open offline storage.'));
+                });
+            }
+            async function saveOfflineVault(accountId, encryptedPayload, dirty) {
+                const db = await openOfflineVaultDB();
+                try {
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction('vaults', 'readwrite');
+                        tx.objectStore('vaults').put({ accountId, payload: encryptedPayload, dirty: Boolean(dirty), savedAt: Date.now() });
+                        tx.oncomplete = resolve;
+                        tx.onerror = () => reject(tx.error || new Error('Could not save offline vault.'));
+                        tx.onabort = () => reject(tx.error || new Error('Offline vault save was cancelled.'));
+                    });
+                } finally { db.close(); }
+            }
+            async function readOfflineVault(accountId) {
+                const db = await openOfflineVaultDB();
+                try {
+                    return await new Promise((resolve, reject) => {
+                        const tx = db.transaction('vaults', 'readonly');
+                        const request = tx.objectStore('vaults').get(accountId);
+                        request.onsuccess = () => resolve(request.result || null);
+                        request.onerror = () => reject(request.error || new Error('Could not read offline vault.'));
+                    });
+                } finally { db.close(); }
+            }
+            async function markOfflineVaultSynced(accountId) {
+                const record = await readOfflineVault(accountId);
+                if (record) await saveOfflineVault(accountId, record.payload, false);
+            }
+
             async function loadUserWorkspace(profile) {
                 const accountId = normalizeAccountId(profile.email);
                 const cloudUid = profile.firebaseUid || profile.uid || firebaseAuth.currentUser?.uid || '';
                 const cookieKey = COOKIE_ACCOUNT_PREFIX + accountId;
 
-                let encrypted = cloudUid ? await pullAccountFromCloudServer(cloudUid) : null;
+                let encrypted = null;
+                if (navigator.onLine && cloudUid) encrypted = await pullAccountFromCloudServer(cloudUid);
+                if (!encrypted) encrypted = readChunkedCookieData(cookieKey);
                 if (!encrypted) {
-                    encrypted = readChunkedCookieData(cookieKey);
+                    try {
+                        const localVault = await readOfflineVault(accountId);
+                        if (localVault && localVault.payload) encrypted = localVault.payload;
+                    } catch (e) { console.warn('Offline vault could not be read:', e); }
                 }
 
                 if (encrypted) {
@@ -2024,6 +2097,8 @@
                             const parsed = JSON.parse(decryptedJson);
                             if (Array.isArray(parsed)) {
                                 items = parsed;
+                                // Refresh the encrypted local mirror whenever cloud/cookie data loads.
+                                try { await saveOfflineVault(accountId, encrypted, false); } catch (e) { /* local storage may be unavailable */ }
                                 return;
                             }
                         } catch (e) { /* ignore */ }
@@ -2052,11 +2127,11 @@
                 }
 
                 const encrypted = await encryptAccountPayload(accountId, serialized);
-                // Keep a small local fallback only; larger vaults are stored in Firestore
-                // chunks because browser cookie/localStorage limits are much smaller.
-                if (encrypted.length <= LOCAL_VAULT_BACKUP_LIMIT_CHARS) {
-                    writeChunkedCookieData(cookieKey, encrypted);
-                }
+                // Keep an encrypted IndexedDB copy of the complete vault for offline reading/editing.
+                // Cookies remain a small compatibility fallback for older browsers.
+                try { await saveOfflineVault(accountId, encrypted, true); }
+                catch (e) { console.warn('Offline local save failed:', e); }
+                if (encrypted.length <= LOCAL_VAULT_BACKUP_LIMIT_CHARS) writeChunkedCookieData(cookieKey, encrypted);
                 updateStorageMeter();
 
                 if (broadcastUpdate && syncChannel) {
@@ -2070,14 +2145,19 @@
                 const syncBadge = document.getElementById('sidebarSyncBadge');
                 if (syncBadge) syncBadge.textContent = 'Syncing...';
 
+                if (!navigator.onLine) {
+                    if (syncBadge) syncBadge.textContent = 'Offline • Saved on this device';
+                    return true;
+                }
                 const cloudSynced = cloudUid ? await syncAccountToCloudServer(cloudUid, encrypted) : false;
+                if (cloudSynced) {
+                    try { await markOfflineVaultSynced(accountId); } catch (e) { /* keep local copy */ }
+                }
                 if (syncBadge) {
-                    syncBadge.textContent = cloudSynced ? 'Cloud Synced' : (encrypted.length <= LOCAL_VAULT_BACKUP_LIMIT_CHARS ? 'Vault Saved' : 'Cloud Sync Failed');
+                    syncBadge.textContent = cloudSynced ? 'Cloud Synced' : 'Saved on this device • Sync pending';
                 }
-                if (!cloudSynced && encrypted.length > LOCAL_VAULT_BACKUP_LIMIT_CHARS) {
-                    showToast('Cloud save failed. Your large vault was not saved; please try again.');
-                }
-                return cloudSynced;
+                if (!cloudSynced) showToast('Saved on this device. Cloud sync will retry when internet returns.');
+                return true;
             }
 
             /**
@@ -5817,6 +5897,24 @@
                 // 4. Otherwise show clean Login Gate with zero fake/demo accounts
                 renderSavedAccountChips();
             }
+
+            window.addEventListener('online', async () => {
+                if (!currentUser) return;
+                const accountId = normalizeAccountId(currentUser.email);
+                const cloudUid = currentUser.firebaseUid || currentUser.uid || firebaseAuth.currentUser?.uid || '';
+                try {
+                    const localVault = await readOfflineVault(accountId);
+                    if (localVault?.dirty && localVault.payload && cloudUid) {
+                        const ok = await syncAccountToCloudServer(cloudUid, localVault.payload);
+                        if (ok) {
+                            await markOfflineVaultSynced(accountId);
+                            const badge = document.getElementById('sidebarSyncBadge');
+                            if (badge) badge.textContent = 'Cloud Synced';
+                            showToast('Offline changes synced to your account.');
+                        }
+                    }
+                } catch (e) { console.warn('Offline changes could not sync yet:', e); }
+            });
 
             bootstrap();
         })();
