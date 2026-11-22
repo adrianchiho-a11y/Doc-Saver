@@ -750,6 +750,11 @@
                             </p>
                         </div>
 
+                        <button type="button" id="openAccountSettingsBtn"
+                            class="w-full px-3 py-2 rounded-xl hover:bg-blue-50 text-left text-xs font-semibold text-slate-700 flex items-center gap-2.5 transition cursor-pointer">
+                            <span class="text-base">⚙️</span><span>Settings</span>
+                        </button>
+
                         <button type="button" id="dropdownServerSettingsBtn"
                             class="w-full px-3 py-2 rounded-xl hover:bg-slate-100 text-left text-xs font-semibold text-slate-700 flex items-center gap-2.5 transition cursor-pointer">
                             <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -1387,6 +1392,61 @@
         </div>
     </div>
 
+    <!-- Account Settings -->
+    <div id="accountSettingsModal" class="fixed inset-0 z-[60] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
+        <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[92vh] overflow-y-auto p-5 sm:p-7">
+            <div class="flex items-start justify-between gap-4 mb-5">
+                <div><h2 class="font-brand text-xl font-bold text-slate-900">Account Settings</h2><p class="text-xs text-slate-500 mt-1">Manage your Doc Saver account</p></div>
+                <button type="button" id="closeAccountSettingsBtn" class="w-9 h-9 rounded-full hover:bg-slate-100 text-slate-500 text-xl">×</button>
+            </div>
+            <div class="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 mb-5">
+                <div id="settingsAvatarPreview" class="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center text-xl font-bold overflow-hidden">U</div>
+                <div class="min-w-0 flex-1"><div id="settingsCurrentName" class="font-semibold text-slate-900 truncate">User</div><div id="settingsCurrentEmail" class="text-xs text-slate-500 truncate"></div>
+                    <label class="inline-flex mt-2 text-xs font-semibold text-blue-600 hover:underline cursor-pointer">Change profile picture<input id="settingsPictureInput" type="file" accept="image/*" class="hidden"></label>
+                </div>
+            </div>
+            <div class="space-y-4">
+                <section class="p-4 rounded-2xl border border-slate-200">
+                    <h3 class="text-sm font-bold text-slate-900 mb-2">Display name</h3>
+                    <div class="flex gap-2"><input id="settingsNameInput" maxlength="80" class="min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm select-text" placeholder="Your name"><button id="settingsSaveNameBtn" type="button" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold">Save</button></div>
+                </section>
+                <section class="p-4 rounded-2xl border border-slate-200">
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">Change password</h3>
+                    <p id="settingsPasswordHelp" class="text-xs text-slate-500 mb-2">Enter your current password and a new password.</p>
+                    <input id="settingsCurrentPassword" type="password" autocomplete="current-password" class="w-full px-3 py-2 mb-2 rounded-xl border border-slate-300 text-sm select-text" placeholder="Current password">
+                    <input id="settingsNewPassword" type="password" autocomplete="new-password" class="w-full px-3 py-2 mb-2 rounded-xl border border-slate-300 text-sm select-text" placeholder="New password (at least 6 characters)">
+                    <button id="settingsChangePasswordBtn" type="button" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold">Update password</button>
+                </section>
+                <section class="p-4 rounded-2xl border border-slate-200">
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">Change email</h3>
+                    <p class="text-xs text-slate-500 mb-2">A six-digit verification code will be sent to the new email address.</p>
+                    <input id="settingsNewEmail" type="email" autocomplete="email" class="w-full px-3 py-2 mb-2 rounded-xl border border-slate-300 text-sm select-text" placeholder="New email address">
+                    <div id="settingsEmailCodeArea" class="hidden">
+                        <input id="settingsEmailCode" inputmode="numeric" maxlength="6" class="w-full px-3 py-2 mb-2 rounded-xl border border-slate-300 text-sm tracking-[.3em] select-text" placeholder="6-digit code">
+                        <button id="settingsVerifyEmailBtn" type="button" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold">Verify and change email</button>
+                    </div>
+                    <button id="settingsSendEmailCodeBtn" type="button" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold">Send verification code</button>
+                </section>
+                <section class="p-4 rounded-2xl border border-slate-200 flex items-center justify-between gap-3">
+                    <div><h3 class="text-sm font-bold text-slate-900">Upgrade</h3><p class="text-xs text-slate-500">Premium features and extra storage</p></div>
+                    <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">In Beta</span>
+                </section>
+                <section class="p-4 rounded-2xl border border-red-200 bg-red-50/40">
+                    <h3 class="text-sm font-bold text-red-700">Delete account</h3>
+                    <p class="text-xs text-slate-600 mt-1 mb-3">Permanently delete your Doc Saver account and cloud vault. We will email you a six-digit verification code first.</p>
+                    <button id="settingsStartDeleteBtn" type="button" class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold">Delete my account</button>
+                    <div id="settingsDeleteCodeArea" class="hidden mt-3">
+                        <p id="settingsDeleteCodeSentText" class="text-xs text-slate-600 mb-2"></p>
+                        <input id="settingsDeleteCode" inputmode="numeric" maxlength="6" class="w-full px-3 py-2 mb-2 rounded-xl border border-red-200 text-sm tracking-[.3em] select-text" placeholder="6-digit verification code">
+                        <input id="settingsDeletePassword" type="password" autocomplete="current-password" class="w-full px-3 py-2 mb-2 rounded-xl border border-red-200 text-sm select-text" placeholder="Current password (Doc Saver accounts)">
+                        <button id="settingsConfirmDeleteBtn" type="button" class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold">Verify code and permanently delete</button>
+                    </div>
+                </section>
+            </div>
+            <p id="accountSettingsMessage" class="hidden mt-4 p-3 rounded-xl text-xs"></p>
+        </div>
+    </div>
+
     <!-- Delete Confirmation Modal -->
     <div id="confirmModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[1px]">
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-6">
@@ -1410,10 +1470,12 @@
         import {
             getAuth, GoogleAuthProvider, signInWithPopup,
             createUserWithEmailAndPassword, signInWithEmailAndPassword,
-            updateProfile, signOut, onAuthStateChanged
+            updateProfile, updateEmail, updatePassword, deleteUser,
+            EmailAuthProvider, reauthenticateWithCredential, reauthenticateWithPopup,
+            signOut, onAuthStateChanged
         } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
         import {
-            getFirestore, doc, getDoc, setDoc, serverTimestamp
+            getFirestore, doc, getDoc, setDoc, deleteDoc, serverTimestamp
         } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -1779,7 +1841,7 @@
                         email: profile.email.trim().toLowerCase(),
                         provider: profile.provider,
                         firebaseUid: profile.firebaseUid || profile.uid || '',
-                        picture: profile.picture || '',
+                        picture: (profile.picture && !String(profile.picture).startsWith('data:')) ? profile.picture : '',
                         lastLogin: new Date().toISOString()
                     });
                     this.save(list);
@@ -2418,14 +2480,23 @@
                     return;
                 }
                 profile.firebaseUid = authenticatedUid;
+                try {
+                    const profileSnap = await getDoc(doc(firestoreDb, 'users', authenticatedUid, 'workspace', 'profile'));
+                    if (profileSnap.exists()) {
+                        const cloudProfile = profileSnap.data();
+                        profile.name = cloudProfile.name || profile.name;
+                        profile.picture = cloudProfile.picture || profile.picture || '';
+                    }
+                } catch (profileError) { console.warn('Could not load cloud profile settings:', profileError); }
                 const savedProfile = AccountRegistry.upsert(profile);
+                if (profile.picture) savedProfile.picture = profile.picture;
                 currentUser = savedProfile;
 
                 try {
                     localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(savedProfile));
                 } catch (e) { /* ignore */ }
 
-                document.getElementById('headerUserAvatar').textContent = (savedProfile.name || 'U')[0].toUpperCase();
+                renderAccountAvatar(savedProfile.picture || '', savedProfile.name || 'U');
                 document.getElementById('headerUserName').textContent = savedProfile.name;
                 document.getElementById('dropdownUserName').textContent = savedProfile.name;
                 document.getElementById('dropdownUserEmail').textContent = savedProfile.email;
@@ -3738,6 +3809,249 @@
                     showPopupError(error.code === 'auth/email-already-in-use'
                         ? 'An account with this email already exists. Please sign in instead.'
                         : `Could not create your Firebase account: ${error.message || error.code}`);
+                }
+            });
+
+            // Account Settings: profile, credentials, email verification, and account deletion.
+            let settingsPendingEmailChange = null;
+            let settingsPendingDeleteCode = null;
+            let settingsPendingDeleteExpiry = 0;
+
+            function showAccountSettingsMessage(message, isError = false) {
+                const el = document.getElementById('accountSettingsMessage');
+                el.textContent = message;
+                el.className = 'mt-4 p-3 rounded-xl text-xs ' + (isError ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700');
+            }
+
+            function renderAccountAvatar(picture, name) {
+                const targets = ['headerUserAvatar', 'settingsAvatarPreview'];
+                targets.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    el.innerHTML = '';
+                    if (picture) {
+                        const img = document.createElement('img');
+                        img.src = picture;
+                        img.alt = 'Profile picture';
+                        img.className = 'w-full h-full object-cover';
+                        el.appendChild(img);
+                    } else {
+                        el.textContent = (name || 'U').trim().charAt(0).toUpperCase() || 'U';
+                    }
+                });
+            }
+
+            function openAccountSettings() {
+                if (!currentUser || !firebaseAuth.currentUser) return;
+                document.getElementById('accountDropdownMenu').classList.add('hidden');
+                document.getElementById('settingsCurrentName').textContent = currentUser.name || 'User';
+                document.getElementById('settingsCurrentEmail').textContent = currentUser.email || '';
+                document.getElementById('settingsNameInput').value = currentUser.name || '';
+                document.getElementById('settingsNewEmail').value = currentUser.email || '';
+                document.getElementById('settingsEmailCodeArea').classList.add('hidden');
+                document.getElementById('settingsSendEmailCodeBtn').classList.remove('hidden');
+                document.getElementById('settingsDeleteCodeArea').classList.add('hidden');
+                document.getElementById('settingsCurrentPassword').value = '';
+                document.getElementById('settingsNewPassword').value = '';
+                document.getElementById('settingsDeletePassword').value = '';
+                document.getElementById('accountSettingsMessage').classList.add('hidden');
+                renderAccountAvatar(currentUser.picture || '', currentUser.name || 'U');
+                document.getElementById('accountSettingsModal').classList.remove('hidden');
+                document.getElementById('accountSettingsModal').classList.add('flex');
+            }
+
+            function closeAccountSettings() {
+                document.getElementById('accountSettingsModal').classList.add('hidden');
+                document.getElementById('accountSettingsModal').classList.remove('flex');
+                settingsPendingEmailChange = null;
+                settingsPendingDeleteCode = null;
+            }
+
+            async function reauthenticateSettingsUser(password) {
+                const user = firebaseAuth.currentUser;
+                if (!user) throw new Error('Please sign in again.');
+                const passwordProvider = (user.providerData || []).some(p => p.providerId === 'password');
+                if (passwordProvider) {
+                    if (!password) throw new Error('Enter your current password to confirm this change.');
+                    const credential = EmailAuthProvider.credential(user.email, password);
+                    await reauthenticateWithCredential(user, credential);
+                } else {
+                    await reauthenticateWithPopup(user, googleProvider);
+                }
+            }
+
+            async function saveCloudProfile(patch) {
+                const uid = firebaseAuth.currentUser?.uid;
+                if (!uid) throw new Error('You are not signed in.');
+                await setDoc(doc(firestoreDb, 'users', uid, 'workspace', 'profile'), {
+                    ...patch, updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+
+            document.getElementById('openAccountSettingsBtn').addEventListener('click', openAccountSettings);
+            document.getElementById('closeAccountSettingsBtn').addEventListener('click', closeAccountSettings);
+            document.getElementById('settingsSaveNameBtn').addEventListener('click', async () => {
+                const name = document.getElementById('settingsNameInput').value.trim();
+                if (!name) return showAccountSettingsMessage('Please enter a name.', true);
+                try {
+                    await updateProfile(firebaseAuth.currentUser, { displayName: name });
+                    await saveCloudProfile({ name });
+                    currentUser.name = name;
+                    AccountRegistry.upsert(currentUser);
+                    localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(currentUser));
+                    document.getElementById('headerUserName').textContent = name;
+                    document.getElementById('dropdownUserName').textContent = name;
+                    document.getElementById('settingsCurrentName').textContent = name;
+                    renderAccountAvatar(currentUser.picture || '', name);
+                    showAccountSettingsMessage('Your name has been updated.');
+                } catch (e) { showAccountSettingsMessage(e.message || 'Could not update your name.', true); }
+            });
+
+            document.getElementById('settingsChangePasswordBtn').addEventListener('click', async () => {
+                const currentPassword = document.getElementById('settingsCurrentPassword').value;
+                const newPassword = document.getElementById('settingsNewPassword').value;
+                const hasPassword = (firebaseAuth.currentUser?.providerData || []).some(p => p.providerId === 'password');
+                if (!hasPassword) return showAccountSettingsMessage('This account uses Google sign-in. Change its password in your Google account settings.', true);
+                if (newPassword.length < 6) return showAccountSettingsMessage('New password must be at least 6 characters.', true);
+                try {
+                    await reauthenticateSettingsUser(currentPassword);
+                    await updatePassword(firebaseAuth.currentUser, newPassword);
+                    document.getElementById('settingsCurrentPassword').value = '';
+                    document.getElementById('settingsNewPassword').value = '';
+                    showAccountSettingsMessage('Your password has been updated.');
+                } catch (e) { showAccountSettingsMessage(e.message || 'Could not update your password.', true); }
+            });
+
+            document.getElementById('settingsPictureInput').addEventListener('change', async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                if (!file.type.startsWith('image/')) return showAccountSettingsMessage('Please choose an image file.', true);
+                if (file.size > 10 * 1024 * 1024) return showAccountSettingsMessage('Please choose an image smaller than 10 MB.', true);
+                try {
+                    const source = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                    });
+                    const img = await new Promise((resolve, reject) => {
+                        const image = new Image();
+                        image.onload = () => resolve(image);
+                        image.onerror = reject;
+                        image.src = source;
+                    });
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 256; canvas.height = 256;
+                    const ctx = canvas.getContext('2d');
+                    const scale = Math.max(256 / img.width, 256 / img.height);
+                    const w = img.width * scale, h = img.height * scale;
+                    ctx.drawImage(img, (256 - w) / 2, (256 - h) / 2, w, h);
+                    const picture = canvas.toDataURL('image/jpeg', 0.72);
+                    if (picture.length > 700000) throw new Error('That image is too large after processing. Try another picture.');
+                    await saveCloudProfile({ picture });
+                    currentUser.picture = picture;
+                    localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(currentUser));
+                    renderAccountAvatar(picture, currentUser.name);
+                    showAccountSettingsMessage('Your profile picture has been saved to your account.');
+                } catch (err) { showAccountSettingsMessage(err.message || 'Could not save that picture.', true); }
+                e.target.value = '';
+            });
+
+            document.getElementById('settingsSendEmailCodeBtn').addEventListener('click', async () => {
+                const email = document.getElementById('settingsNewEmail').value.trim().toLowerCase();
+                if (!isValidEmailFormat(email)) return showAccountSettingsMessage('Enter a valid new email address.', true);
+                if (email === String(currentUser.email).toLowerCase()) return showAccountSettingsMessage('That is already your email address.', true);
+                const code = generateSecureSixDigitCode();
+                const result = await dispatchVerificationEmail(currentUser.name || 'Doc Saver user', email, code);
+                if (!result.sentViaEmailApi) return showAccountSettingsMessage('Could not send the verification email. ' + (result.error || ''), true);
+                settingsPendingEmailChange = { email, code, expires: Date.now() + 10 * 60 * 1000 };
+                document.getElementById('settingsEmailCodeArea').classList.remove('hidden');
+                document.getElementById('settingsSendEmailCodeBtn').classList.add('hidden');
+                showAccountSettingsMessage('Verification code sent to ' + email + '.');
+            });
+
+            document.getElementById('settingsVerifyEmailBtn').addEventListener('click', async () => {
+                const pending = settingsPendingEmailChange;
+                const code = document.getElementById('settingsEmailCode').value.trim();
+                if (!pending || Date.now() > pending.expires) return showAccountSettingsMessage('The code expired. Send a new one.', true);
+                if (code !== pending.code) return showAccountSettingsMessage('That verification code is incorrect.', true);
+                try {
+                    const oldEmail = currentUser.email;
+                    const oldAccountId = normalizeAccountId(oldEmail);
+                    const newAccountId = normalizeAccountId(pending.email);
+                    const vaultCipher = await pullAccountFromCloudServer(firebaseAuth.currentUser.uid);
+                    let migratedCipher = null;
+                    if (vaultCipher) {
+                        const plain = await decryptAccountPayload(oldAccountId, vaultCipher);
+                        if (!plain) throw new Error('Could not safely migrate your saved files. Email was not changed.');
+                        migratedCipher = await encryptAccountPayload(newAccountId, plain);
+                    }
+                    await reauthenticateSettingsUser(document.getElementById('settingsCurrentPassword').value);
+                    await updateEmail(firebaseAuth.currentUser, pending.email);
+                    if (migratedCipher) {
+                        writeChunkedCookieData(COOKIE_ACCOUNT_PREFIX + newAccountId, migratedCipher);
+                        await setDoc(doc(firestoreDb, 'users', firebaseAuth.currentUser.uid, 'workspace', 'vault'), {
+                            payload: migratedCipher, email: pending.email, updatedAt: serverTimestamp()
+                        });
+                    }
+                    const profileSnap = await getDoc(doc(firestoreDb, 'users', firebaseAuth.currentUser.uid, 'workspace', 'profile'));
+                    const profileData = profileSnap.exists() ? profileSnap.data() : {};
+                    await saveCloudProfile({ ...profileData, email: pending.email });
+                    currentUser.email = pending.email;
+                    currentUser.accountId = newAccountId;
+                    currentUser.firebaseUid = firebaseAuth.currentUser.uid;
+                    AccountRegistry.save(AccountRegistry.getAll().filter(a => a.accountId !== oldAccountId));
+                    AccountRegistry.upsert(currentUser);
+                    localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(currentUser));
+                    document.getElementById('dropdownUserEmail').textContent = pending.email;
+                    document.getElementById('settingsCurrentEmail').textContent = pending.email;
+                    document.getElementById('settingsNewEmail').value = pending.email;
+                    settingsPendingEmailChange = null;
+                    showAccountSettingsMessage('Your email has been updated. Your cloud vault was migrated.');
+                } catch (e) { showAccountSettingsMessage(e.message || e.code || 'Could not change email.', true); }
+            });
+
+            document.getElementById('settingsStartDeleteBtn').addEventListener('click', async () => {
+                const code = generateSecureSixDigitCode();
+                const result = await dispatchVerificationEmail(currentUser.name || 'Doc Saver user', currentUser.email, code);
+                if (!result.sentViaEmailApi) return showAccountSettingsMessage('Could not send the verification email. ' + (result.error || ''), true);
+                settingsPendingDeleteCode = code;
+                settingsPendingDeleteExpiry = Date.now() + 10 * 60 * 1000;
+                document.getElementById('settingsDeleteCodeSentText').textContent = 'A six-digit code was sent to ' + currentUser.email + '. This code expires in 10 minutes.';
+                document.getElementById('settingsDeleteCodeArea').classList.remove('hidden');
+                showAccountSettingsMessage('Check your email for the account deletion code.');
+            });
+
+            document.getElementById('settingsConfirmDeleteBtn').addEventListener('click', async () => {
+                const code = document.getElementById('settingsDeleteCode').value.trim();
+                if (!settingsPendingDeleteCode || Date.now() > settingsPendingDeleteExpiry) return showAccountSettingsMessage('The code expired. Start the deletion process again.', true);
+                if (code !== settingsPendingDeleteCode) return showAccountSettingsMessage('That verification code is incorrect.', true);
+                const user = firebaseAuth.currentUser;
+                if (!user) return showAccountSettingsMessage('Please sign in again.', true);
+                const ok = window.confirm('This permanently deletes your Doc Saver account and cloud vault. This cannot be undone. Continue?');
+                if (!ok) return;
+                try {
+                    await reauthenticateSettingsUser(document.getElementById('settingsDeletePassword').value);
+                    const uid = user.uid;
+                    await deleteDoc(doc(firestoreDb, 'users', uid, 'workspace', 'vault'));
+                    await deleteDoc(doc(firestoreDb, 'users', uid, 'workspace', 'profile'));
+                    await deleteUser(user);
+                    const accountId = normalizeAccountId(currentUser.email);
+                    AccountRegistry.save(AccountRegistry.getAll().filter(a => a.accountId !== accountId));
+                    try {
+                        localStorage.removeItem(ACTIVE_SESSION_KEY);
+                        localStorage.removeItem(DS_CREDENTIALS_PREFIX + accountId);
+                    } catch (e) { /* ignore */ }
+                    closeAccountSettings();
+                    currentUser = null;
+                    items = [];
+                    renderSavedAccountChips();
+                    document.getElementById('authGateOverlay').classList.remove('hidden');
+                    showToast('Your Doc Saver account and cloud vault were deleted.');
+                } catch (e) {
+                    showAccountSettingsMessage(e.code === 'auth/requires-recent-login'
+                        ? 'Please sign in again, then repeat account deletion.'
+                        : (e.message || e.code || 'Could not delete the account.'), true);
                 }
             });
 
