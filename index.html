@@ -940,6 +940,10 @@
                                 class="type-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center gap-1.5 transition shrink-0 cursor-pointer">
                                 <span class="w-2 h-2 rounded-full bg-amber-500"></span> Slides
                             </button>
+                            <button type="button" data-type-filter="keep"
+                                class="type-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center gap-1.5 transition shrink-0 cursor-pointer">
+                                <span class="w-2 h-2 rounded-full bg-yellow-400"></span> Keep
+                            </button>
                         </div>
 
                         <span class="text-[11px] text-slate-400 hidden sm:inline">
@@ -1340,6 +1344,9 @@
         </button>
         <button type="button" data-action="rename" class="ctx-action w-full px-4 py-2 text-left hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer">
             <span>Rename</span>
+        </button>
+        <button type="button" data-action="restore" class="ctx-action w-full px-4 py-2 text-left hover:bg-emerald-50 text-emerald-700 flex items-center gap-2.5 cursor-pointer">
+            <span>Restore from Trash</span>
         </button>
         <div class="my-1 border-t border-slate-100"></div>
         <button type="button" data-action="trash" class="ctx-action w-full px-4 py-2 text-left hover:bg-red-50 text-red-600 flex items-center gap-2.5 cursor-pointer">
@@ -3569,10 +3576,14 @@
                 const menu = document.getElementById('itemContextMenu');
                 document.getElementById('ctxStarLabel').textContent = item.starred ? 'Remove from Starred' : 'Add to Starred';
                 document.getElementById('ctxTrashLabel').textContent = item.trashed ? 'Delete Forever' : 'Move to Trash';
+                menu.querySelector('[data-action="open"]').classList.toggle('hidden', Boolean(item.trashed));
+                menu.querySelector('[data-action="star"]').classList.toggle('hidden', Boolean(item.trashed));
+                menu.querySelector('[data-action="rename"]').classList.toggle('hidden', Boolean(item.trashed));
+                menu.querySelector('[data-action="restore"]').classList.toggle('hidden', !item.trashed);
 
                 menu.classList.remove('hidden');
                 const left = Math.min(window.innerWidth - 230, Math.max(8, clientX));
-                const top = Math.min(window.innerHeight - 190, Math.max(8, clientY));
+                const top = Math.min(window.innerHeight - 240, Math.max(8, clientY));
                 menu.style.left = `${left}px`;
                 menu.style.top = `${top}px`;
             }
@@ -4374,6 +4385,16 @@
                             renderDrive();
                             showToast(`Renamed to "${newName}"`);
                         }
+                    } else if (action === 'restore') {
+                        if (!item.trashed) return;
+                        const originalParent = item.parentId || 'root';
+                        const parentFolder = originalParent === 'root' ? null : items.find(i => i.id === originalParent && i.type === 'folder');
+                        item.parentId = parentFolder && !parentFolder.trashed ? originalParent : 'root';
+                        item.trashed = false;
+                        item.updatedAt = new Date().toISOString();
+                        await persistCurrentUserItems();
+                        renderDrive();
+                        showToast('Restored from Trash');
                     } else if (action === 'trash') {
                         if (item.trashed) {
                             items = items.filter(i => i.id !== item.id);
