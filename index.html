@@ -1544,7 +1544,7 @@
                 if (standalone) { alert('Doc Saver is already installed on this device.'); return; }
                 if (docSaverInstallPrompt) { docSaverInstallPrompt.prompt(); await docSaverInstallPrompt.userChoice; docSaverInstallPrompt = null; return; }
                 const ua = navigator.userAgent || '';
-                if (/iPhone|iPad|iPod/i.test(ua)) alert('To add Doc Saver to your iPhone or iPad:\n\n1. Open this page in Safari.\n2. Tap the Share button.\n3. Choose “Add to Home Screen”.\n4. Tap Add.');
+                if (/iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) alert('To add Doc Saver to your iPhone or iPad:\n\n1. Open this page in Safari.\n2. Tap the Share button.\n3. Choose “Add to Home Screen”.\n4. Tap Add.');
                 else if (/Android/i.test(ua)) alert('To install Doc Saver on Android, open this page in Chrome, tap the ⋮ menu, then choose “Install app” or “Add to Home screen”.');
                 else alert('To install Doc Saver on Windows, open this page in Chrome or Edge, open the browser menu, and choose “Install Doc Saver” or “Install this site as an app”.');
             });
