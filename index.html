@@ -2489,6 +2489,7 @@
                     }
                 } catch (profileError) { console.warn('Could not load cloud profile settings:', profileError); }
                 const savedProfile = AccountRegistry.upsert(profile);
+                if (profile.picture) savedProfile.picture = profile.picture;
                 currentUser = savedProfile;
 
                 try {
@@ -2496,7 +2497,6 @@
                 } catch (e) { /* ignore */ }
 
                 renderAccountAvatar(savedProfile.picture || '', savedProfile.name || 'U');
-                document.getElementById('headerUserAvatar').textContent = (savedProfile.name || 'U')[0].toUpperCase();
                 document.getElementById('headerUserName').textContent = savedProfile.name;
                 document.getElementById('dropdownUserName').textContent = savedProfile.name;
                 document.getElementById('dropdownUserEmail').textContent = savedProfile.email;
