@@ -5099,12 +5099,11 @@ blockquote { border-left: 3px solid #9ca3af; margin: 10pt 0; padding: 4pt 12pt; 
 hr { border: 0; border-top: 1px solid #9ca3af; margin: 14pt 0; }
 @media print { a { color: inherit; text-decoration: none; } }
 </style></head><body>${content}</body></html>`);
-                printWindow.document.close();
-                printWindow.onload = () => {
+                printWindow.addEventListener('load', () => {
                     printWindow.focus();
                     printWindow.print();
-                };
-                setTimeout(() => { if (!printWindow.closed) { printWindow.focus(); printWindow.print(); } }, 500);
+                }, { once: true });
+                printWindow.document.close();
                 item.updatedAt = new Date().toISOString();
                 persistCurrentUserItems();
             });
