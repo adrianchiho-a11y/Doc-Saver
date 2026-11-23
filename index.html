@@ -1051,6 +1051,15 @@
                     <option value="Lora, Georgia, serif">Lora Serif</option>
                     <option value="'Roboto Mono', monospace">Roboto Mono</option>
                 </select>
+                <select id="docFontSize" aria-label="Text size" title="Text size"
+                    class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 focus:outline-none cursor-pointer">
+                    <option value="8">8</option><option value="9">9</option><option value="10">10</option>
+                    <option value="11">11</option><option value="12" selected>12</option><option value="14">14</option>
+                    <option value="16">16</option><option value="18">18</option><option value="20">20</option>
+                    <option value="22">22</option><option value="24">24</option><option value="28">28</option>
+                    <option value="32">32</option><option value="36">36</option><option value="48">48</option>
+                    <option value="60">60</option><option value="72">72</option>
+                </select>
 
                 <div class="h-4 w-px bg-slate-300 mx-0.5"></div>
 
@@ -1114,12 +1123,21 @@
 
                 <select id="sheetFontSize" title="Font size"
                     class="px-2 py-1 rounded-lg bg-white border border-slate-200 font-medium text-slate-700 focus:outline-none cursor-pointer">
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
                     <option value="11">11</option>
                     <option value="12" selected>12</option>
                     <option value="14">14</option>
                     <option value="16">16</option>
                     <option value="18">18</option>
+                    <option value="20">20</option>
                     <option value="22">22</option>
+                    <option value="24">24</option>
+                    <option value="28">28</option>
+                    <option value="32">32</option>
+                    <option value="36">36</option>
+                    <option value="48">48</option>
                 </select>
 
                 <div class="h-4 w-px bg-slate-300 mx-0.5"></div>
@@ -1289,12 +1307,22 @@
                 </label>
 
                 <select id="elFontSizeSelect" class="px-2 py-1 rounded border border-slate-200 text-slate-700 cursor-pointer">
+                    <option value="10">10px</option>
+                    <option value="12">12px</option>
                     <option value="14">14px</option>
+                    <option value="16">16px</option>
                     <option value="18">18px</option>
+                    <option value="20">20px</option>
                     <option value="22" selected>22px</option>
+                    <option value="24">24px</option>
                     <option value="28">28px</option>
+                    <option value="32">32px</option>
                     <option value="36">36px</option>
                     <option value="44">44px</option>
+                    <option value="48">48px</option>
+                    <option value="56">56px</option>
+                    <option value="64">64px</option>
+                    <option value="72">72px</option>
                 </select>
 
                 <button type="button" id="elBoldBtn" class="px-2 py-1 rounded border border-slate-200 font-bold hover:bg-slate-100 cursor-pointer">B</button>
@@ -5055,9 +5083,50 @@
                 document.getElementById('richDocSurface').focus();
             });
 
+            let savedDocTextRange = null;
+            const richDocSurface = document.getElementById('richDocSurface');
+            document.addEventListener('selectionchange', () => {
+                const selection = window.getSelection();
+                if (!selection || !selection.rangeCount || !richDocSurface) return;
+                const range = selection.getRangeAt(0);
+                if (richDocSurface.contains(range.commonAncestorContainer)) {
+                    savedDocTextRange = range.cloneRange();
+                }
+            });
+
             document.getElementById('docFontFamily').addEventListener('change', (e) => {
+                if (savedDocTextRange) {
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(savedDocTextRange);
+                }
                 document.execCommand('fontName', false, e.target.value);
-                document.getElementById('richDocSurface').focus();
+                richDocSurface.focus();
+            });
+
+            document.getElementById('docFontSize').addEventListener('change', (e) => {
+                const px = Math.max(8, Math.min(72, parseInt(e.target.value, 10) || 12));
+                if (savedDocTextRange) {
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(savedDocTextRange);
+                }
+                richDocSurface.focus();
+                document.execCommand('fontSize', false, '7');
+                richDocSurface.querySelectorAll('font[size="7"]').forEach(font => {
+                    const span = document.createElement('span');
+                    span.style.fontSize = px + 'px';
+                    while (font.firstChild) span.appendChild(font.firstChild);
+                    font.replaceWith(span);
+                });
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount) savedDocTextRange = selection.getRangeAt(0).cloneRange();
+                const item = items.find(i => i.id === activeEditorItemId && i.type === 'doc');
+                if (item) {
+                    item.content = sanitizeRichHTML(richDocSurface.innerHTML);
+                    item.updatedAt = new Date().toISOString();
+                    markEditorSaving();
+                }
             });
 
             document.getElementById('docTextColorInput').addEventListener('input', (e) => {
