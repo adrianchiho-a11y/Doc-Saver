@@ -40,6 +40,13 @@
         .doc-paper-sheet {
             box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 10px 30px rgba(15, 23, 42, 0.06);
         }
+        .drive-item-card[draggable="true"], .drive-item-row[draggable="true"] { cursor: grab; }
+        .drive-item-card.dragging, .drive-item-row.dragging { opacity: .45; }
+        .drive-item-card.folder-drop-target, .drive-item-row.folder-drop-target,
+        #breadcrumbNav .folder-drop-target { outline: 2px dashed #2563eb; outline-offset: 3px; background: #eff6ff !important; }
+        @media print {
+            @page { margin: 18mm; }
+        }
         #richDocSurface h1 { font-size: 2rem; font-weight: 700; line-height: 1.25; margin-bottom: 0.6rem; }
         #richDocSurface h2 { font-size: 1.4rem; font-weight: 600; line-height: 1.3; margin-bottom: 0.5rem; }
         #richDocSurface p { margin-bottom: 0.5rem; }
@@ -3578,10 +3585,10 @@
                     cursor = folder.parentId;
                 }
 
-                let html = `<button type="button" data-crumb-id="root" class="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-800 cursor-pointer">My Drive</button>`;
+                let html = `<button type="button" data-crumb-id="root" data-drop-folder="root" class="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-800 cursor-pointer">My Drive</button>`;
                 trail.forEach(f => {
                     html += `<span class="text-slate-400">›</span>
-                        <button type="button" data-crumb-id="${f.id}" class="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-800 cursor-pointer">${escapeHTML(f.name)}</button>`;
+                        <button type="button" data-crumb-id="${f.id}" data-drop-folder="${f.id}" class="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-800 cursor-pointer">${escapeHTML(f.name)}</button>`;
                 });
                 nav.innerHTML = html;
 
@@ -3591,6 +3598,50 @@
                         renderDrive();
                     });
                 });
+            }
+
+            async function moveDriveItemIntoFolder(itemId, folderId) {
+                const moving = items.find(i => i.id === itemId && !i.trashed);
+                const destination = items.find(i => i.id === folderId && i.type === 'folder' && !i.trashed);
+                if (!moving || !destination) return;
+                if (moving.type === 'folder') {
+                    let cursor = destination;
+                    while (cursor) {
+                        if (cursor.id === moving.id) {
+                            showToast('A folder cannot be moved into itself or one of its subfolders.');
+                            return;
+                        }
+                        cursor = items.find(i => i.id === (cursor.parentId || 'root') && i.type === 'folder');
+                    }
+                }
+                if ((moving.parentId || 'root') === destination.id) return;
+                moving.parentId = destination.id;
+                moving.updatedAt = new Date().toISOString();
+                const saved = await persistCurrentUserItems();
+                if (saved) {
+                    currentFolderId = destination.id;
+                    currentNav = 'drive';
+                    searchQuery = '';
+                    document.getElementById('searchInput').value = '';
+                    renderDrive();
+                    showToast('Moved "' + moving.name + '" into "' + destination.name + '".');
+                }
+            }
+
+            async function moveDriveItemToRoot(itemId) {
+                const moving = items.find(i => i.id === itemId && !i.trashed);
+                if (!moving || (moving.parentId || 'root') === 'root') return;
+                moving.parentId = 'root';
+                moving.updatedAt = new Date().toISOString();
+                const saved = await persistCurrentUserItems();
+                if (saved) {
+                    currentFolderId = 'root';
+                    currentNav = 'drive';
+                    searchQuery = '';
+                    document.getElementById('searchInput').value = '';
+                    renderDrive();
+                    showToast('Moved "' + moving.name + '" to My Drive.');
+                }
             }
 
             function renderDrive() {
@@ -3653,7 +3704,7 @@
                     `;
                     filtered.forEach(item => {
                         rowsHtml += `
-                            <tr data-item-id="${item.id}" class="drive-item-row border-b border-slate-100 hover:bg-[#EDF2FC]/70 transition cursor-pointer">
+                            <tr data-item-id="${item.id}" draggable="true" class="drive-item-row border-b border-slate-100 hover:bg-[#EDF2FC]/70 transition cursor-pointer">
                                 <td class="py-3 px-3 flex items-center gap-3 font-medium text-slate-800">
                                     ${getFileBadgeHtml(item.type)}
                                     <span class="truncate">${escapeHTML(item.name)}</span>
@@ -3674,7 +3725,7 @@
                     filtered.forEach(item => {
                         const typeLabel = item.type === 'folder' ? 'Folder' : item.type === 'doc' ? 'Document' : item.type === 'sheet' ? 'Sheet' : item.type === 'keep' ? 'Keep' : 'Slide';
                         cardsHtml += `
-                            <div data-item-id="${item.id}"
+                            <div data-item-id="${item.id}" draggable="true"
                                 class="drive-item-card group p-3.5 rounded-2xl bg-[#F8FAFD] hover:bg-[#EDF2FC] border border-slate-200/80 hover:border-blue-200 transition cursor-pointer flex flex-col justify-between" style="background-color:${item.type === 'keep' ? (item.color || '#ffffff') : '#F8FAFD'}">
                                 <div class="flex items-center justify-between gap-2">
                                     <div class="flex items-center gap-2.5 min-w-0">
@@ -3701,6 +3752,70 @@
                     cardsHtml += '</div>';
                     container.innerHTML = cardsHtml;
                 }
+
+                // Drag documents, sheets, slides, Keep notes, and folders into folders.
+                let draggedDriveItemId = null;
+                container.querySelectorAll('[data-item-id]').forEach(el => {
+                    el.addEventListener('dragstart', (e) => {
+                        const item = items.find(i => i.id === el.dataset.itemId);
+                        if (!item || item.trashed || currentNav !== 'drive' || searchQuery.trim()) {
+                            e.preventDefault();
+                            return;
+                        }
+                        draggedDriveItemId = item.id;
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', item.id);
+                        requestAnimationFrame(() => el.classList.add('dragging'));
+                    });
+                    el.addEventListener('dragend', () => {
+                        draggedDriveItemId = null;
+                        el.classList.remove('dragging');
+                        container.querySelectorAll('.folder-drop-target').forEach(x => x.classList.remove('folder-drop-target'));
+                        document.querySelectorAll('#breadcrumbNav .folder-drop-target').forEach(x => x.classList.remove('folder-drop-target'));
+                    });
+                    if (items.find(i => i.id === el.dataset.itemId)?.type === 'folder') {
+                        el.addEventListener('dragover', (e) => {
+                            if (!draggedDriveItemId || draggedDriveItemId === el.dataset.itemId) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            el.classList.add('folder-drop-target');
+                        });
+                        el.addEventListener('dragleave', (e) => {
+                            if (!el.contains(e.relatedTarget)) el.classList.remove('folder-drop-target');
+                        });
+                        el.addEventListener('drop', async (e) => {
+                            if (!draggedDriveItemId) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const sourceId = draggedDriveItemId;
+                            const destinationId = el.dataset.itemId;
+                            draggedDriveItemId = null;
+                            el.classList.remove('folder-drop-target');
+                            await moveDriveItemIntoFolder(sourceId, destinationId);
+                        });
+                    }
+                });
+
+                // Breadcrumbs are also drop targets, including My Drive to move an item back to root.
+                document.querySelectorAll('#breadcrumbNav [data-drop-folder]').forEach(target => {
+                    target.addEventListener('dragover', (e) => {
+                        if (!draggedDriveItemId) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        target.classList.add('folder-drop-target');
+                    });
+                    target.addEventListener('dragleave', () => target.classList.remove('folder-drop-target'));
+                    target.addEventListener('drop', async (e) => {
+                        if (!draggedDriveItemId) return;
+                        e.preventDefault();
+                        const sourceId = draggedDriveItemId;
+                        const destinationId = target.dataset.dropFolder;
+                        draggedDriveItemId = null;
+                        target.classList.remove('folder-drop-target');
+                        if (destinationId === 'root') await moveDriveItemToRoot(sourceId);
+                        else await moveDriveItemIntoFolder(sourceId, destinationId);
+                    });
+                });
 
                 // Bind open & context menu actions
                 container.querySelectorAll('[data-item-id]').forEach(el => {
@@ -4954,7 +5069,44 @@
             });
 
             document.getElementById('docPrintBtn').addEventListener('click', () => {
-                window.print();
+                const item = items.find(i => i.id === activeEditorItemId && i.type === 'doc');
+                if (!item) return;
+                const surface = document.getElementById('richDocSurface');
+                const content = sanitizeRichHTML(surface ? surface.innerHTML : (item.content || '<p></p>'));
+                item.content = content;
+                const printWindow = window.open('', '_blank');
+                if (!printWindow) {
+                    showToast('Allow pop-ups to print this document.');
+                    return;
+                }
+                const safeTitle = escapeHTML(item.name || 'Doc Saver document');
+                printWindow.document.open();
+                printWindow.document.write(`<!doctype html>
+<html><head><meta charset="utf-8"><title>${safeTitle}</title>
+<style>
+@page { size: auto; margin: 18mm; }
+* { box-sizing: border-box; }
+body { margin: 0; color: #111827; font: 11pt/1.55 Arial, sans-serif; overflow-wrap: anywhere; }
+h1 { font-size: 24pt; line-height: 1.2; margin: 0 0 12pt; }
+h2 { font-size: 18pt; line-height: 1.25; margin: 16pt 0 8pt; }
+p { margin: 0 0 8pt; }
+ul, ol { padding-left: 24pt; }
+table { width: 100%; border-collapse: collapse; margin: 10pt 0; page-break-inside: auto; }
+tr { page-break-inside: avoid; page-break-after: auto; }
+td, th { border: 1px solid #9ca3af; padding: 5pt 7pt; }
+img { max-width: 100%; height: auto; }
+blockquote { border-left: 3px solid #9ca3af; margin: 10pt 0; padding: 4pt 12pt; }
+hr { border: 0; border-top: 1px solid #9ca3af; margin: 14pt 0; }
+@media print { a { color: inherit; text-decoration: none; } }
+</style></head><body>${content}</body></html>`);
+                printWindow.document.close();
+                printWindow.onload = () => {
+                    printWindow.focus();
+                    printWindow.print();
+                };
+                setTimeout(() => { if (!printWindow.closed) { printWindow.focus(); printWindow.print(); } }, 500);
+                item.updatedAt = new Date().toISOString();
+                persistCurrentUserItems();
             });
 
             document.getElementById('richDocSurface').addEventListener('input', () => {
