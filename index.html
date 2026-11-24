@@ -147,7 +147,30 @@
         #configureEmailRelayFromOtpBtn {
             display: none !important;
         }
-    </style>
+    
+        /* Doc Saver luxury refresh */
+        :root { --ds-ink:#172033; --ds-muted:#718096; --ds-line:rgba(148,163,184,.22); --ds-glass:rgba(255,255,255,.82); --ds-lilac:#7667e8; }
+        body { background:radial-gradient(ellipse at 12% 0%,rgba(207,196,255,.25),transparent 34%),radial-gradient(ellipse at 92% 8%,rgba(191,219,254,.34),transparent 32%),#f5f7fc !important; }
+        .font-brand { letter-spacing:-.035em; }
+        #driveMainPanel { border-radius:26px !important; border-color:rgba(203,213,225,.72) !important; box-shadow:0 18px 60px rgba(30,41,59,.075),0 2px 8px rgba(30,41,59,.035) !important; transition:box-shadow .28s ease,transform .28s ease; }
+        aside { background:rgba(255,255,255,.74) !important; backdrop-filter:blur(18px); border-color:rgba(203,213,225,.62) !important; }
+        .nav-item,.type-chip,button { transition:background-color .2s ease,color .2s ease,border-color .2s ease,box-shadow .22s ease,transform .22s cubic-bezier(.2,.8,.2,1); }
+        button:not(:disabled):active { transform:scale(.975); }
+        .nav-item:hover { transform:translateX(2px); }
+        .doc-paper-sheet { box-shadow:0 8px 30px rgba(30,41,59,.08),0 1px 3px rgba(30,41,59,.06) !important; }
+        input,textarea,select,[contenteditable="true"] { transition:border-color .2s ease,box-shadow .2s ease; }
+        input:focus,textarea:focus,select:focus,[contenteditable="true"]:focus { outline:none; box-shadow:0 0 0 3px rgba(118,103,232,.12); }
+        @keyframes dsRise { from { opacity:0; transform:translateY(12px) scale(.99); } to { opacity:1; transform:translateY(0) scale(1); } }
+        @keyframes dsGlow { 0%,100% { box-shadow:0 12px 35px rgba(118,103,232,.13); } 50% { box-shadow:0 16px 45px rgba(118,103,232,.22); } }
+        .ds-animate-in { animation:dsRise .32s cubic-bezier(.2,.8,.2,1) both; }
+        #chatWorkspace { background:radial-gradient(ellipse at 10% 0%,rgba(207,196,255,.28),transparent 36%),#f5f7fc; }
+        .ds-chat-card { background:rgba(255,255,255,.88); border:1px solid rgba(203,213,225,.7); box-shadow:0 18px 60px rgba(30,41,59,.08); backdrop-filter:blur(18px); }
+        .ds-chat-bubble { animation:dsRise .2s ease-out both; }
+        .ds-chat-bubble.mine { background:linear-gradient(135deg,#6556d9,#8879ee); color:#fff; border-radius:18px 18px 5px 18px; }
+        .ds-chat-bubble.theirs { background:#fff; color:#243047; border:1px solid #e8ebf3; border-radius:18px 18px 18px 5px; }
+        .ds-chat-list-button.active { background:linear-gradient(120deg,rgba(118,103,232,.13),rgba(191,219,254,.2)); border-color:rgba(118,103,232,.28); }
+        @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.01ms !important; } }
+</style>
 
     <link rel="manifest" href="./manifest.webmanifest">
     <meta name="theme-color" content="#2563eb">
@@ -915,6 +938,11 @@
                         </svg>
                         <span>Trash</span>
                     </button>
+                    <button type="button" data-nav="chat"
+                        class="nav-item w-full px-4 py-2.5 rounded-full text-sm font-medium flex items-center gap-3.5 text-slate-700 hover:bg-slate-200/70 transition cursor-pointer">
+                        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 11.5a8.5 8.5 0 01-8.5 8.5 8.4 8.4 0 01-4-.98L3 21l1.98-5.5a8.4 8.4 0 01-.98-4A8.5 8.5 0 0112.5 3h.5a8.5 8.5 0 018 8v.5z"/></svg>
+                        <span>Chat</span><span id="chatUnreadBadge" class="hidden ml-auto rounded-full bg-violet-600 text-white text-[10px] px-2 py-0.5">0</span>
+                    </button>
                 </nav>
 
 
@@ -1550,6 +1578,54 @@
         <div id="storageBreakdownRows" class="space-y-3"></div><p class="text-[10px] text-slate-400 mt-4">Each Doc Saver account has its own 8 MB limit. This meter counts only the signed-in account's Docs, Sheets, Slides, and Keep notes. Usage is estimated from saved item data.</p>
       </div>
     </div>
+
+    <section id="chatWorkspace" class="fixed inset-0 z-[90] hidden p-3 sm:p-6">
+        <div class="ds-chat-card ds-animate-in max-w-7xl h-full mx-auto rounded-[28px] overflow-hidden flex flex-col">
+            <header class="px-5 sm:px-7 py-4 border-b border-slate-200/70 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white grid place-items-center shadow-lg shadow-violet-200">✦</div>
+                    <div class="min-w-0"><h2 class="font-brand text-xl font-bold text-slate-900">Messages</h2><p class="text-xs text-slate-500">Private conversations and group spaces</p></div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="chatNotificationsBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50">Enable notifications</button>
+                    <button id="chatCloseBtn" class="w-10 h-10 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50" aria-label="Close chat">✕</button>
+                </div>
+            </header>
+            <div class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)]">
+                <aside class="!bg-white/65 !border-r !border-slate-200/70 !rounded-none p-4 flex flex-col min-h-0">
+                    <div class="flex gap-2 mb-3">
+                        <button id="chatNewDmBtn" class="flex-1 px-3 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800">＋ New chat</button>
+                        <button id="chatNewGroupBtn" class="px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50">＋ Group</button>
+                    </div>
+                    <input id="chatSearchInput" type="search" placeholder="Search conversations" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm mb-3">
+                    <div id="chatConversationList" class="flex-1 min-h-0 overflow-y-auto space-y-1"><div class="p-4 text-sm text-slate-400">Loading conversations…</div></div>
+                    <p class="text-[10px] text-slate-400 pt-3">Signed in as <span id="chatAccountLabel"></span></p>
+                </aside>
+                <section class="min-h-0 flex flex-col bg-gradient-to-b from-white/75 to-slate-50/80">
+                    <div id="chatEmptyState" class="flex-1 grid place-items-center text-center p-8">
+                        <div><div class="w-16 h-16 mx-auto rounded-3xl bg-violet-100 text-violet-700 grid place-items-center text-3xl mb-4">✧</div><h3 class="font-brand text-lg font-bold text-slate-800">Your conversations, together</h3><p class="text-sm text-slate-500 mt-1">Start a private chat or create a group.</p></div>
+                    </div>
+                    <div id="chatConversationView" class="hidden flex-1 min-h-0 flex flex-col">
+                        <div class="px-5 py-4 border-b border-slate-200/70 flex items-center justify-between gap-3 bg-white/55">
+                            <div class="min-w-0"><h3 id="chatConversationTitle" class="font-semibold text-slate-900 truncate">Conversation</h3><p id="chatConversationSubtitle" class="text-xs text-slate-500">Messages are synced in real time</p></div>
+                            <button id="chatGroupInfoBtn" class="hidden px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-600">Group info</button>
+                        </div>
+                        <div id="chatMessages" class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-3"></div>
+                        <div id="chatTypingLabel" class="px-5 text-xs text-violet-600 min-h-5"></div>
+                        <div class="p-4 sm:p-5 border-t border-slate-200/70 bg-white/75">
+                            <div id="chatReplyPreview" class="hidden mb-2 px-3 py-2 rounded-xl bg-violet-50 text-xs text-violet-800 flex items-center justify-between"><span id="chatReplyText"></span><button id="chatCancelReply" class="font-bold">✕</button></div>
+                            <div class="flex items-end gap-2">
+                                <textarea id="chatComposer" rows="1" maxlength="4000" placeholder="Write a message…  (Enter to send)" class="flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-violet-300"></textarea>
+                                <button id="chatSendBtn" class="px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-semibold shadow-lg shadow-violet-200 hover:shadow-xl">Send</button>
+                            </div>
+                            <p class="text-[10px] text-slate-400 mt-2 px-1">Enter to send · Shift + Enter for a new line</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </section>
+
     <div id="toastBanner"
         class="fixed bottom-5 left-5 z-50 transform translate-y-16 opacity-0 transition-all duration-300 pointer-events-none bg-slate-900 text-white text-xs sm:text-sm font-medium px-4 py-3 rounded-xl shadow-lg flex items-center gap-2">
         <span id="toastText">Saved</span>
@@ -1595,8 +1671,11 @@
             signOut, onAuthStateChanged
         } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
         import {
-            getFirestore, doc, getDoc, setDoc, deleteDoc, serverTimestamp
+            getFirestore, doc, getDoc, setDoc, deleteDoc, serverTimestamp,
+            collection, addDoc, getDocs, query, where, orderBy, limit, onSnapshot,
+            updateDoc, arrayUnion, arrayRemove
         } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
+        import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-messaging.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBLN7sAQbU1UBkNTT45NIvWBM_4dsRF4ek",
@@ -2755,6 +2834,17 @@
                 const savedProfile = AccountRegistry.upsert(profile);
                 if (profile.picture) savedProfile.picture = profile.picture;
                 currentUser = savedProfile;
+                // Publish a minimal account card so other signed-in Doc Saver users can find this account by exact email for chat.
+                try {
+                    await setDoc(doc(firestoreDb, 'publicProfiles', authenticatedUid), {
+                        uid: authenticatedUid,
+                        email: savedProfile.email || firebaseAuth.currentUser.email || '',
+                        emailLower: String(savedProfile.email || firebaseAuth.currentUser.email || '').trim().toLowerCase(),
+                        name: savedProfile.name || savedProfile.email || 'Doc Saver user',
+                        picture: savedProfile.picture || '',
+                        updatedAt: serverTimestamp()
+                    }, { merge: true });
+                } catch (directoryError) { console.warn('Chat account directory is not available until Firestore rules are updated:', directoryError); }
 
                 try {
                     localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(savedProfile));
@@ -4918,10 +5008,232 @@
             document.getElementById('openStorageDetailsBtn').addEventListener('click',()=>{renderStorageDetails();const m=document.getElementById('storageDetailsModal');m.classList.remove('hidden');m.classList.add('flex');});
             document.getElementById('closeStorageDetailsBtn').addEventListener('click',()=>{const m=document.getElementById('storageDetailsModal');m.classList.add('hidden');m.classList.remove('flex');});
 
+
+            // =========================================================================
+            // DOC SAVER CHAT — real-time direct messages and group conversations
+            // =========================================================================
+            let chatListUnsub = null, chatMessagesUnsub = null, activeChatId = null;
+            let activeChatData = null, chatMessagesCache = [], chatReplyTarget = null;
+            let chatSeenIds = new Set(), chatTypingTimer = null, chatUnreadCount = 0;
+            const chatEsc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            const chatUid = () => firebaseAuth.currentUser?.uid || currentUser?.firebaseUid || currentUser?.uid || '';
+            const chatDate = value => value && typeof value.toDate === 'function' ? value.toDate() : (value ? new Date(value) : new Date());
+            const chatTime = value => chatDate(value).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+            async function chatHash(value) {
+                const bytes = new TextEncoder().encode(value);
+                const digest = await crypto.subtle.digest('SHA-256', bytes);
+                return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+            }
+            function chatDisplayTitle(data) {
+                if (data.isGroup) return data.title || 'Group chat';
+                const other = (data.memberProfiles || {})[Object.keys(data.memberProfiles || {}).find(id=>id!==chatUid())] || {};
+                return other.name || other.email || 'Direct message';
+            }
+            function openChatWorkspace() {
+                if (!currentUser || !chatUid()) { showToast('Sign in to use Doc Saver Chat.'); return; }
+                document.getElementById('chatWorkspace').classList.remove('hidden');
+                document.getElementById('chatAccountLabel').textContent = currentUser.email || currentUser.name || '';
+                startChatList();
+            }
+            function closeChatWorkspace() {
+                document.getElementById('chatWorkspace').classList.add('hidden');
+                if (chatMessagesUnsub) { chatMessagesUnsub(); chatMessagesUnsub = null; }
+            }
+            function startChatList() {
+                if (chatListUnsub) chatListUnsub();
+                const uid = chatUid();
+                const q = query(collection(firestoreDb,'chats'),where('memberUids','array-contains',uid));
+                chatListUnsub = onSnapshot(q, snap => {
+                    const rows = snap.docs.map(d=>({id:d.id,...d.data()}));
+                    rows.sort((a,b)=>chatDate(b.updatedAt || b.createdAt)-chatDate(a.updatedAt || a.createdAt));
+                    renderChatList(rows);
+                }, err => { console.error(err); showToast('Chat could not load. Check Firestore chat rules.'); });
+            }
+            function renderChatList(rows) {
+                const filter = document.getElementById('chatSearchInput').value.trim().toLowerCase();
+                const visible = rows.filter(c=>chatDisplayTitle(c).toLowerCase().includes(filter) || String(c.lastMessage || '').toLowerCase().includes(filter));
+                const host = document.getElementById('chatConversationList');
+                if (!visible.length) { host.innerHTML='<div class="p-4 text-center text-xs text-slate-400">No conversations yet. Start a new chat.</div>'; return; }
+                host.innerHTML = visible.map(c=>{
+                    const active = c.id===activeChatId;
+                    const title = chatEsc(chatDisplayTitle(c));
+                    const last = chatEsc(c.lastMessage || (c.isGroup ? 'Group created' : 'Start a conversation'));
+                    return '<button data-chat-open="'+chatEsc(c.id)+'" class="ds-chat-list-button '+(active?'active':'')+' w-full text-left rounded-2xl border border-transparent px-3 py-3 flex items-center gap-3 hover:bg-slate-50">'+
+                        '<span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-100 to-blue-100 text-violet-700 grid place-items-center font-bold">'+(c.isGroup?'✧':title.slice(0,1).toUpperCase())+'</span>'+
+                        '<span class="min-w-0 flex-1"><span class="block text-sm font-semibold text-slate-800 truncate">'+title+'</span><span class="block text-xs text-slate-500 truncate">'+last+'</span></span>'+
+                        '<span class="text-[10px] text-slate-400">'+(c.updatedAt?chatTime(c.updatedAt):'')+'</span></button>';
+                }).join('');
+                host.querySelectorAll('[data-chat-open]').forEach(b=>b.addEventListener('click',()=>openChatConversation(b.dataset.chatOpen)));
+            }
+            async function openChatConversation(chatId) {
+                activeChatId = chatId;
+                if (chatMessagesUnsub) chatMessagesUnsub();
+                document.getElementById('chatEmptyState').classList.add('hidden');
+                document.getElementById('chatConversationView').classList.remove('hidden');
+                document.getElementById('chatMessages').innerHTML='<div class="text-center text-xs text-slate-400 py-8">Loading messages…</div>';
+                const chatRef = doc(firestoreDb,'chats',chatId);
+                const chatSnap = await getDoc(chatRef);
+                if (!chatSnap.exists()) { showToast('This conversation is no longer available.'); return; }
+                activeChatData = chatSnap.data();
+                document.getElementById('chatConversationTitle').textContent = chatDisplayTitle(activeChatData);
+                document.getElementById('chatConversationSubtitle').textContent = activeChatData.isGroup ? ((activeChatData.memberUids||[]).length+' members · Group chat') : 'Private conversation';
+                document.getElementById('chatGroupInfoBtn').classList.toggle('hidden',!activeChatData.isGroup);
+                const uid = chatUid();
+                updateDoc(chatRef,{['lastReadAtBy.'+uid]:serverTimestamp()}).catch(()=>{});
+                const q = query(collection(firestoreDb,'chats',chatId,'messages'),orderBy('createdAt','asc'),limit(150));
+                chatSeenIds = new Set();
+                chatMessagesUnsub = onSnapshot(q, snap => {
+                    chatMessagesCache = snap.docs.map(d=>({id:d.id,...d.data()}));
+                    snap.docs.forEach(d=>{
+                        const m=d.data();
+                        if (!chatSeenIds.has(d.id) && m.senderUid!==uid && document.hidden && Notification.permission==='granted') {
+                            try { new Notification(m.senderName || 'New message',{body:String(m.text||'').slice(0,120),icon:'./icons/doc-saver-icon.svg'}); } catch(e) {}
+                        }
+                        chatSeenIds.add(d.id);
+                    });
+                    renderChatMessages();
+                    const chatData = activeChatData || {};
+                    const typing = Object.keys(chatData.typing || {}).filter(id=>id!==uid && chatData.typing[id]);
+                    document.getElementById('chatTypingLabel').textContent = typing.length ? 'Someone is typing…' : '';
+                    updateDoc(chatRef,{['lastReadAtBy.'+uid]:serverTimestamp()}).catch(()=>{});
+                }, err => { console.error(err); showToast('Messages could not load. Check chat permissions.'); });
+                onSnapshot(chatRef,snap=>{ if(snap.exists()){activeChatData=snap.data();document.getElementById('chatConversationTitle').textContent=chatDisplayTitle(activeChatData);const typing=Object.keys(activeChatData.typing||{}).filter(id=>id!==uid&&activeChatData.typing[id]);document.getElementById('chatTypingLabel').textContent=typing.length?'Someone is typing…':'';} });
+            }
+            function renderChatMessages() {
+                const host=document.getElementById('chatMessages');
+                if(!chatMessagesCache.length){host.innerHTML='<div class="text-center text-xs text-slate-400 py-10">Say hello to start the conversation.</div>';return;}
+                host.innerHTML=chatMessagesCache.map(m=>{
+                    const mine=m.senderUid===chatUid();
+                    const reactions=m.reactions||{};
+                    const reactionHtml=Object.keys(reactions).filter(e=>(reactions[e]||[]).length).map(e=>'<button data-chat-react="'+chatEsc(m.id)+'" data-emoji="'+chatEsc(e)+'" class="rounded-full border border-slate-200 bg-white/80 px-2 py-1 text-xs">'+chatEsc(e)+' '+reactions[e].length+'</button>').join('');
+                    const actions='<div class="flex flex-wrap gap-1 mt-1"><button data-chat-react="'+chatEsc(m.id)+'" data-emoji="❤️" class="text-[10px] text-slate-400 hover:text-violet-600">❤️</button><button data-chat-react="'+chatEsc(m.id)+'" data-emoji="👍" class="text-[10px] text-slate-400 hover:text-violet-600">👍</button><button data-chat-react="'+chatEsc(m.id)+'" data-emoji="😂" class="text-[10px] text-slate-400 hover:text-violet-600">😂</button><button data-chat-reply="'+chatEsc(m.id)+'" class="text-[10px] text-slate-400 hover:text-violet-600">Reply</button>'+(mine?'<button data-chat-edit="'+chatEsc(m.id)+'" class="text-[10px] text-slate-400 hover:text-violet-600">Edit</button><button data-chat-delete="'+chatEsc(m.id)+'" class="text-[10px] text-slate-400 hover:text-red-600">Delete</button>':'')+'<button data-chat-pin="'+chatEsc(m.id)+'" class="text-[10px] text-slate-400 hover:text-violet-600">'+(m.pinned?'Unpin':'Pin')+'</button></div>';
+                    const reply=m.replyText?'<div class="text-[10px] opacity-70 border-l-2 border-current pl-2 mb-1">↳ '+chatEsc(m.replyText)+'</div>':'';
+                    return '<article class="ds-chat-bubble flex '+(mine?'justify-end':'justify-start')+'"><div class="max-w-[88%] sm:max-w-[75%]"><div class="text-[10px] text-slate-400 mb-1 '+(mine?'text-right':'')+'">'+(mine?'You':chatEsc(m.senderName||'Member'))+' · '+chatTime(m.createdAt)+(m.edited?' · edited':'')+(m.pinned?' · 📌 pinned':'')+'</div><div class="px-4 py-3 text-sm whitespace-pre-wrap break-words '+(mine?'ds-chat-bubble mine':'ds-chat-bubble theirs')+'">'+reply+chatEsc(m.text||'')+'</div><div class="flex flex-wrap gap-1 mt-1 '+(mine?'justify-end':'')+'">'+reactionHtml+'</div>'+actions+'</div></article>';
+                }).join('');
+                host.querySelectorAll('[data-chat-react]').forEach(b=>b.addEventListener('click',()=>toggleChatReaction(b.dataset.chatReact,b.dataset.emoji)));
+                host.querySelectorAll('[data-chat-reply]').forEach(b=>b.addEventListener('click',()=>setChatReply(b.dataset.chatReply)));
+                host.querySelectorAll('[data-chat-edit]').forEach(b=>b.addEventListener('click',()=>editChatMessage(b.dataset.chatEdit)));
+                host.querySelectorAll('[data-chat-delete]').forEach(b=>b.addEventListener('click',()=>deleteChatMessage(b.dataset.chatDelete)));
+                host.querySelectorAll('[data-chat-pin]').forEach(b=>b.addEventListener('click',()=>pinChatMessage(b.dataset.chatPin)));
+                host.scrollTop=host.scrollHeight;
+            }
+            async function startDirectChat() {
+                const email=prompt('Enter the exact email address of the Doc Saver account:');
+                if(!email||!email.trim())return;
+                const normalized=email.trim().toLowerCase();
+                if(normalized===(currentUser.email||'').toLowerCase()){showToast('That is your own account.');return;}
+                try{
+                    const snap=await getDocs(query(collection(firestoreDb,'publicProfiles'),where('emailLower','==',normalized),limit(1)));
+                    if(snap.empty){showToast('No Doc Saver account was found for that email. Ask them to sign in once first.');return;}
+                    const other=snap.docs[0].data(),uid=chatUid();
+                    const members=[uid,other.uid].sort();
+                    const chatId='dm_'+(await chatHash(members.join('|'))).slice(0,40);
+                    const mine={uid,name:currentUser.name||currentUser.email,email:currentUser.email||''};
+                    const otherProfile={uid:other.uid,name:other.name||other.email,email:other.email||''};
+                    const memberProfiles={};memberProfiles[uid]=mine;memberProfiles[other.uid]=otherProfile;
+                    await setDoc(doc(firestoreDb,'chats',chatId),{id:chatId,isGroup:false,createdBy:uid,memberUids:members,memberProfiles,title:'',createdAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
+                    await openChatConversation(chatId);
+                }catch(e){console.error(e);showToast('Could not start chat: '+(e.code||e.message));}
+            }
+            async function startGroupChat() {
+                const raw=prompt('Enter member email addresses, separated by commas:');
+                if(!raw)return;
+                const emails=raw.split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+                const title=prompt('Name this group:');
+                if(!title||!title.trim())return;
+                try{
+                    const uid=chatUid(),members=[uid],profiles={};
+                    profiles[uid]={uid,name:currentUser.name||currentUser.email,email:currentUser.email||''};
+                    for(const email of emails){
+                        if(email===(currentUser.email||'').toLowerCase())continue;
+                        const found=await getDocs(query(collection(firestoreDb,'publicProfiles'),where('emailLower','==',email),limit(1)));
+                        if(found.empty){showToast('Account not found: '+email+'. They must sign in once first.');return;}
+                        const p=found.docs[0].data();if(!members.includes(p.uid)){members.push(p.uid);profiles[p.uid]={uid:p.uid,name:p.name||p.email,email:p.email||''};}
+                    }
+                    if(members.length<2){showToast('Add at least one other account.');return;}
+                    const ref=await addDoc(collection(firestoreDb,'chats'),{isGroup:true,title:title.trim(),createdBy:uid,memberUids:members,memberProfiles:profiles,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),lastMessage:'Group created'});
+                    await openChatConversation(ref.id);
+                }catch(e){console.error(e);showToast('Could not create group: '+(e.code||e.message));}
+            }
+            async function sendChatMessage() {
+                const input=document.getElementById('chatComposer'),textValue=input.value.trim();
+                if(!textValue||!activeChatId)return;
+                const uid=chatUid(),name=currentUser.name||currentUser.email||'Member';
+                const payload={senderUid:uid,senderName:name,text:textValue,createdAt:serverTimestamp(),edited:false,reactions:{}};
+                if(chatReplyTarget){payload.replyTo=chatReplyTarget.id;payload.replyText=chatReplyTarget.text.slice(0,180);}
+                try{
+                    await addDoc(collection(firestoreDb,'chats',activeChatId,'messages'),payload);
+                    await updateDoc(doc(firestoreDb,'chats',activeChatId),{lastMessage:textValue.slice(0,180),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp(),['typing.'+uid]:false});
+                    input.value='';chatReplyTarget=null;document.getElementById('chatReplyPreview').classList.add('hidden');
+                }catch(e){console.error(e);showToast('Message did not send: '+(e.code||e.message));}
+            }
+            async function toggleChatReaction(messageId,emoji) {
+                const m=chatMessagesCache.find(x=>x.id===messageId);if(!m)return;
+                const arr=(m.reactions||{})[emoji]||[],uid=chatUid();
+                try{await updateDoc(doc(firestoreDb,'chats',activeChatId,'messages',messageId),{['reactions.'+emoji]:arr.includes(uid)?arrayRemove(uid):arrayUnion(uid)});}catch(e){showToast('Could not add reaction.');}
+            }
+            function setChatReply(messageId) {
+                const m=chatMessagesCache.find(x=>x.id===messageId);if(!m)return;
+                chatReplyTarget={id:messageId,text:m.text||''};
+                document.getElementById('chatReplyText').textContent='Replying to: '+(m.text||'').slice(0,100);
+                document.getElementById('chatReplyPreview').classList.remove('hidden');
+                document.getElementById('chatComposer').focus();
+            }
+            async function editChatMessage(id) {
+                const m=chatMessagesCache.find(x=>x.id===id);if(!m||m.senderUid!==chatUid())return;
+                const next=prompt('Edit message:',m.text||'');if(next===null||!next.trim())return;
+                try{await updateDoc(doc(firestoreDb,'chats',activeChatId,'messages',id),{text:next.trim().slice(0,4000),edited:true});}catch(e){showToast('Could not edit message.');}
+            }
+            async function deleteChatMessage(id) {
+                const m=chatMessagesCache.find(x=>x.id===id);if(!m||m.senderUid!==chatUid()||!confirm('Delete this message?'))return;
+                try{await deleteDoc(doc(firestoreDb,'chats',activeChatId,'messages',id));}catch(e){showToast('Could not delete message.');}
+            }
+            async function pinChatMessage(id) {
+                const m=chatMessagesCache.find(x=>x.id===id);if(!m)return;
+                try{await updateDoc(doc(firestoreDb,'chats',activeChatId,'messages',id),{pinned:!m.pinned});}catch(e){showToast('Could not pin message.');}
+            }
+            async function enableChatNotifications() {
+                if(!('Notification' in window)||!('serviceWorker' in navigator)){showToast('Notifications are not supported in this browser.');return;}
+                const permission=await Notification.requestPermission();if(permission!=='granted'){showToast('Notification permission was not granted.');return;}
+                let vapid=localStorage.getItem('docsaver_fcm_vapid_key');
+                if(!vapid){vapid=prompt('Paste the Firebase Web Push certificate public key (Firebase Console → Project settings → Cloud Messaging → Web Push certificates):');if(!vapid)return;localStorage.setItem('docsaver_fcm_vapid_key',vapid.trim());}
+                try{
+                    const registration=await navigator.serviceWorker.ready;
+                    const messaging=getMessaging(firebaseApp);
+                    const token=await getToken(messaging,{vapidKey:vapid.trim(),serviceWorkerRegistration:registration});
+                    if(!token)throw new Error('Firebase did not issue a push token.');
+                    const uid=chatUid(),tokenId=await chatHash(token);
+                    await setDoc(doc(firestoreDb,'users',uid,'pushTokens',tokenId),{token,updatedAt:serverTimestamp(),platform:'web'});
+                    onMessage(messaging,payload=>{const n=payload.notification||{};if(n.title&&document.hidden&&Notification.permission==='granted')new Notification(n.title,{body:n.body||'You have a new message.',icon:'./icons/doc-saver-icon.svg'});});
+                    showToast('Push notifications enabled for this device.');
+                }catch(e){console.error(e);showToast('Push setup failed: '+(e.code||e.message));}
+            }
+            document.getElementById('chatCloseBtn').addEventListener('click',closeChatWorkspace);
+            document.getElementById('chatNewDmBtn').addEventListener('click',startDirectChat);
+            document.getElementById('chatNewGroupBtn').addEventListener('click',startGroupChat);
+            document.getElementById('chatNotificationsBtn').addEventListener('click',enableChatNotifications);
+            document.getElementById('chatSearchInput').addEventListener('input',()=>startChatList());
+            document.getElementById('chatSendBtn').addEventListener('click',sendChatMessage);
+            document.getElementById('chatComposer').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChatMessage();}});
+            document.getElementById('chatComposer').addEventListener('input',()=>{
+                if(!activeChatId)return;const uid=chatUid();
+                updateDoc(doc(firestoreDb,'chats',activeChatId),{['typing.'+uid]:true}).catch(()=>{});
+                clearTimeout(chatTypingTimer);chatTypingTimer=setTimeout(()=>updateDoc(doc(firestoreDb,'chats',activeChatId),{['typing.'+uid]:false}).catch(()=>{}),1800);
+            });
+            document.getElementById('chatComposer').addEventListener('blur',()=>{if(activeChatId)updateDoc(doc(firestoreDb,'chats',activeChatId),{['typing.'+chatUid()]:false}).catch(()=>{});});
+            document.getElementById('chatCancelReply').addEventListener('click',()=>{chatReplyTarget=null;document.getElementById('chatReplyPreview').classList.add('hidden');});
+            document.getElementById('chatGroupInfoBtn').addEventListener('click',()=>{if(activeChatData)alert((activeChatData.memberProfiles?Object.values(activeChatData.memberProfiles).map(p=>p.name||p.email).join('\n'):'Group members'));});
+
             // Drive Navigation, Search, Sort & Filters
             document.querySelectorAll('.nav-item').forEach(btn => {
                 btn.addEventListener('click', () => {
                     currentNav = btn.dataset.nav;
+                    if (currentNav === 'chat') {
+                        document.querySelectorAll('.nav-item').forEach(b => { b.className = 'nav-item w-full px-4 py-2.5 rounded-full text-sm font-medium flex items-center gap-3.5 text-slate-700 hover:bg-slate-200/70 transition cursor-pointer'; });
+                        btn.className = 'nav-item w-full px-4 py-2.5 rounded-full text-sm font-medium flex items-center gap-3.5 bg-[#C2E7FF] text-slate-900 transition cursor-pointer';
+                        openChatWorkspace();
+                        return;
+                    }
                     if (currentNav === 'drive') currentFolderId = 'root';
                     document.querySelectorAll('.nav-item').forEach(b => {
                         b.className = 'nav-item w-full px-4 py-2.5 rounded-full text-sm font-medium flex items-center gap-3.5 text-slate-700 hover:bg-slate-200/70 transition cursor-pointer';
