@@ -169,6 +169,22 @@
         .ds-chat-bubble.mine { background:linear-gradient(135deg,#6556d9,#8879ee); color:#fff; border-radius:18px 18px 5px 18px; }
         .ds-chat-bubble.theirs { background:#fff; color:#243047; border:1px solid #e8ebf3; border-radius:18px 18px 18px 5px; }
         .ds-chat-list-button.active { background:linear-gradient(120deg,rgba(118,103,232,.13),rgba(191,219,254,.2)); border-color:rgba(118,103,232,.28); }
+        /* Extra polished chat motion */
+        @keyframes dsChatOpen { from { opacity:0; transform:translateY(18px) scale(.985); filter:blur(5px); } to { opacity:1; transform:translateY(0) scale(1); filter:blur(0); } }
+        @keyframes dsChatMessage { from { opacity:0; transform:translateY(10px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+        @keyframes dsChatShimmer { 0% { background-position:0% 50%; } 100% { background-position:200% 50%; } }
+        #chatWorkspace:not(.hidden) .ds-chat-card { animation:dsChatOpen .42s cubic-bezier(.2,.8,.2,1) both; }
+        #chatWorkspace header .w-11 { position:relative; overflow:hidden; }
+        #chatWorkspace header .w-11::after { content:""; position:absolute; inset:-60%; background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%); transform:translateX(-70%) rotate(18deg); animation:dsChatShimmer 4.5s ease-in-out infinite; }
+        .ds-chat-list-button { transition:transform .22s cubic-bezier(.2,.8,.2,1),background .22s ease,border-color .22s ease,box-shadow .22s ease; }
+        .ds-chat-list-button:hover { transform:translateX(3px); box-shadow:0 8px 22px rgba(74,62,150,.08); }
+        .ds-chat-bubble { animation:dsChatMessage .24s cubic-bezier(.2,.8,.2,1) both; }
+        #chatMessages > article:nth-child(2) { animation-delay:25ms; }
+        #chatMessages > article:nth-child(3) { animation-delay:50ms; }
+        #chatMessages > article:nth-child(4) { animation-delay:75ms; }
+        #chatSendBtn { position:relative; overflow:hidden; }
+        #chatSendBtn:hover { box-shadow:0 12px 28px rgba(109,82,220,.25); transform:translateY(-1px); }
+        #chatComposer:focus { border-color:#a78bfa; box-shadow:0 0 0 4px rgba(139,92,246,.10); }
         @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.01ms !important; } }
 </style>
 
@@ -1673,7 +1689,7 @@
         import {
             getFirestore, doc, getDoc, setDoc, deleteDoc, serverTimestamp,
             collection, addDoc, getDocs, query, where, orderBy, limit, onSnapshot,
-            updateDoc, arrayUnion, arrayRemove
+            updateDoc, arrayUnion, arrayRemove, writeBatch
         } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
         import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-messaging.js";
 
@@ -5048,7 +5064,12 @@
                     const rows = snap.docs.map(d=>({id:d.id,...d.data()}));
                     rows.sort((a,b)=>chatDate(b.updatedAt || b.createdAt)-chatDate(a.updatedAt || a.createdAt));
                     renderChatList(rows);
-                }, err => { console.error(err); showToast('Chat could not load. Check Firestore chat rules.'); });
+                }, err => {
+                    console.error('Doc Saver chat list listener failed:', err);
+                    const host = document.getElementById('chatConversationList');
+                    host.innerHTML = '<div class="m-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700"><b>Chat could not connect.</b><br>' + chatEsc(err.code || 'firestore-error') + ': ' + chatEsc(err.message || 'Check your Firebase connection and Firestore rules.') + '</div>';
+                    showToast('Chat connection failed (' + (err.code || 'unknown error') + ').');
+                });
             }
             function renderChatList(rows) {
                 const filter = document.getElementById('chatSearchInput').value.trim().toLowerCase();
@@ -5074,7 +5095,14 @@
                 document.getElementById('chatConversationView').classList.remove('hidden');
                 document.getElementById('chatMessages').innerHTML='<div class="text-center text-xs text-slate-400 py-8">Loading messages…</div>';
                 const chatRef = doc(firestoreDb,'chats',chatId);
-                const chatSnap = await getDoc(chatRef);
+                let chatSnap;
+                try {
+                    chatSnap = await getDoc(chatRef);
+                } catch (e) {
+                    console.error('Could not open Doc Saver conversation:', e);
+                    showToast('Could not open chat (' + (e.code || e.message || 'unknown error') + '). Check Firestore rules.');
+                    return;
+                }
                 if (!chatSnap.exists()) { showToast('This conversation is no longer available.'); return; }
                 activeChatData = chatSnap.data();
                 document.getElementById('chatConversationTitle').textContent = chatDisplayTitle(activeChatData);
@@ -5098,7 +5126,11 @@
                     const typing = Object.keys(chatData.typing || {}).filter(id=>id!==uid && chatData.typing[id]);
                     document.getElementById('chatTypingLabel').textContent = typing.length ? 'Someone is typing…' : '';
                     updateDoc(chatRef,{['lastReadAtBy.'+uid]:serverTimestamp()}).catch(()=>{});
-                }, err => { console.error(err); showToast('Messages could not load. Check chat permissions.'); });
+                }, err => {
+                    console.error('Doc Saver messages listener failed:', err);
+                    document.getElementById('chatMessages').innerHTML = '<div class="m-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700"><b>Messages could not load.</b><br>' + chatEsc(err.code || 'firestore-error') + ': ' + chatEsc(err.message || 'Check Firestore chat rules.') + '</div>';
+                    showToast('Messages failed to load (' + (err.code || 'unknown error') + ').');
+                });
                 chatMetaUnsub = onSnapshot(chatRef,snap=>{ if(snap.exists()){activeChatData=snap.data();document.getElementById('chatConversationTitle').textContent=chatDisplayTitle(activeChatData);const typing=Object.keys(activeChatData.typing||{}).filter(id=>id!==uid&&activeChatData.typing[id]);document.getElementById('chatTypingLabel').textContent=typing.length?'Someone is typing…':'';} });
             }
             function renderChatMessages() {
@@ -5159,16 +5191,40 @@
                 }catch(e){console.error(e);showToast('Could not create group: '+(e.code||e.message));}
             }
             async function sendChatMessage() {
-                const input=document.getElementById('chatComposer'),textValue=input.value.trim();
-                if(!textValue||!activeChatId)return;
-                const uid=chatUid(),name=currentUser.name||currentUser.email||'Member';
-                const payload={senderUid:uid,senderName:name,text:textValue,createdAt:serverTimestamp(),edited:false,reactions:{}};
-                if(chatReplyTarget){payload.replyTo=chatReplyTarget.id;payload.replyText=chatReplyTarget.text.slice(0,180);}
-                try{
-                    await addDoc(collection(firestoreDb,'chats',activeChatId,'messages'),payload);
-                    await updateDoc(doc(firestoreDb,'chats',activeChatId),{lastMessage:textValue.slice(0,180),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp(),['typing.'+uid]:false});
-                    input.value='';chatReplyTarget=null;document.getElementById('chatReplyPreview').classList.add('hidden');
-                }catch(e){console.error(e);showToast('Message did not send: '+(e.code||e.message));}
+                const input = document.getElementById('chatComposer');
+                const textValue = input.value.trim();
+                if (!textValue || !activeChatId || !chatUid()) return;
+                const uid = chatUid();
+                const name = currentUser?.name || currentUser?.email || firebaseAuth.currentUser?.displayName || 'Member';
+                const payload = { senderUid: uid, senderName: name, text: textValue, createdAt: serverTimestamp(), edited: false, reactions: {} };
+                if (chatReplyTarget) { payload.replyTo = chatReplyTarget.id; payload.replyText = chatReplyTarget.text.slice(0, 180); }
+                const sendButton = document.getElementById('chatSendBtn');
+                sendButton.disabled = true;
+                sendButton.textContent = 'Sending…';
+                try {
+                    // Commit the message and conversation preview together. This prevents a
+                    // message being saved while the conversation list update silently fails.
+                    const messageRef = doc(collection(firestoreDb, 'chats', activeChatId, 'messages'));
+                    const batch = writeBatch(firestoreDb);
+                    batch.set(messageRef, payload);
+                    batch.update(doc(firestoreDb, 'chats', activeChatId), {
+                        lastMessage: textValue.slice(0, 180),
+                        lastMessageAt: serverTimestamp(),
+                        updatedAt: serverTimestamp(),
+                        ['typing.' + uid]: false
+                    });
+                    await batch.commit();
+                    input.value = '';
+                    chatReplyTarget = null;
+                    document.getElementById('chatReplyPreview').classList.add('hidden');
+                    input.focus();
+                } catch (e) {
+                    console.error('Doc Saver message send failed:', e);
+                    showToast('Message not sent (' + (e.code || e.message || 'unknown error') + '). Check Firestore rules.');
+                } finally {
+                    sendButton.disabled = false;
+                    sendButton.textContent = 'Send';
+                }
             }
             async function toggleChatReaction(messageId,emoji) {
                 const m=chatMessagesCache.find(x=>x.id===messageId);if(!m)return;
