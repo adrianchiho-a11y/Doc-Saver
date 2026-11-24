@@ -5012,7 +5012,7 @@
             // =========================================================================
             // DOC SAVER CHAT — real-time direct messages and group conversations
             // =========================================================================
-            let chatListUnsub = null, chatMessagesUnsub = null, activeChatId = null;
+            let chatListUnsub = null, chatMessagesUnsub = null, chatMetaUnsub = null, activeChatId = null;
             let activeChatData = null, chatMessagesCache = [], chatReplyTarget = null;
             let chatSeenIds = new Set(), chatTypingTimer = null, chatUnreadCount = 0;
             const chatEsc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -5038,6 +5038,7 @@
             function closeChatWorkspace() {
                 document.getElementById('chatWorkspace').classList.add('hidden');
                 if (chatMessagesUnsub) { chatMessagesUnsub(); chatMessagesUnsub = null; }
+                if (chatMetaUnsub) { chatMetaUnsub(); chatMetaUnsub = null; }
             }
             function startChatList() {
                 if (chatListUnsub) chatListUnsub();
@@ -5068,6 +5069,7 @@
             async function openChatConversation(chatId) {
                 activeChatId = chatId;
                 if (chatMessagesUnsub) chatMessagesUnsub();
+                if (chatMetaUnsub) chatMetaUnsub();
                 document.getElementById('chatEmptyState').classList.add('hidden');
                 document.getElementById('chatConversationView').classList.remove('hidden');
                 document.getElementById('chatMessages').innerHTML='<div class="text-center text-xs text-slate-400 py-8">Loading messages…</div>';
@@ -5086,7 +5088,7 @@
                     chatMessagesCache = snap.docs.map(d=>({id:d.id,...d.data()}));
                     snap.docs.forEach(d=>{
                         const m=d.data();
-                        if (!chatSeenIds.has(d.id) && m.senderUid!==uid && document.hidden && Notification.permission==='granted') {
+                        if (!chatSeenIds.has(d.id) && m.senderUid!==uid && document.hidden && ('Notification' in window) && Notification.permission==='granted') {
                             try { new Notification(m.senderName || 'New message',{body:String(m.text||'').slice(0,120),icon:'./icons/doc-saver-icon.svg'}); } catch(e) {}
                         }
                         chatSeenIds.add(d.id);
@@ -5097,7 +5099,7 @@
                     document.getElementById('chatTypingLabel').textContent = typing.length ? 'Someone is typing…' : '';
                     updateDoc(chatRef,{['lastReadAtBy.'+uid]:serverTimestamp()}).catch(()=>{});
                 }, err => { console.error(err); showToast('Messages could not load. Check chat permissions.'); });
-                onSnapshot(chatRef,snap=>{ if(snap.exists()){activeChatData=snap.data();document.getElementById('chatConversationTitle').textContent=chatDisplayTitle(activeChatData);const typing=Object.keys(activeChatData.typing||{}).filter(id=>id!==uid&&activeChatData.typing[id]);document.getElementById('chatTypingLabel').textContent=typing.length?'Someone is typing…':'';} });
+                chatMetaUnsub = onSnapshot(chatRef,snap=>{ if(snap.exists()){activeChatData=snap.data();document.getElementById('chatConversationTitle').textContent=chatDisplayTitle(activeChatData);const typing=Object.keys(activeChatData.typing||{}).filter(id=>id!==uid&&activeChatData.typing[id]);document.getElementById('chatTypingLabel').textContent=typing.length?'Someone is typing…':'';} });
             }
             function renderChatMessages() {
                 const host=document.getElementById('chatMessages');
@@ -5131,7 +5133,8 @@
                     const mine={uid,name:currentUser.name||currentUser.email,email:currentUser.email||''};
                     const otherProfile={uid:other.uid,name:other.name||other.email,email:other.email||''};
                     const memberProfiles={};memberProfiles[uid]=mine;memberProfiles[other.uid]=otherProfile;
-                    await setDoc(doc(firestoreDb,'chats',chatId),{id:chatId,isGroup:false,createdBy:uid,memberUids:members,memberProfiles,title:'',createdAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
+                    const existing = await getDoc(doc(firestoreDb,'chats',chatId));
+                    if (!existing.exists()) await setDoc(doc(firestoreDb,'chats',chatId),{id:chatId,isGroup:false,createdBy:uid,memberUids:members,memberProfiles,title:'',createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
                     await openChatConversation(chatId);
                 }catch(e){console.error(e);showToast('Could not start chat: '+(e.code||e.message));}
             }
