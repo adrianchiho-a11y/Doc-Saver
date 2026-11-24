@@ -1,4 +1,4 @@
-const CACHE_NAME = 'doc-saver-shell-v1';
+const CACHE_NAME = 'doc-saver-shell-v2';
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icons/doc-saver-icon.svg'];
 
 self.addEventListener('install', event => {
