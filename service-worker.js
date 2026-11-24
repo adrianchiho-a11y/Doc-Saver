@@ -70,3 +70,36 @@ self.addEventListener('fetch', event => {
     })());
   }
 });
+
+/* Background notifications for installed Doc Saver. The Firebase Function sends
+   a Web Push notification payload when a chat message is created. */
+self.addEventListener('push', event => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch (_) {}
+  const notification = payload.notification || payload;
+  const title = notification.title || 'Doc Saver';
+  const options = {
+    body: notification.body || 'You have a new message.',
+    icon: './icons/doc-saver-icon.svg',
+    badge: './icons/doc-saver-icon.svg',
+    tag: (payload.data && payload.data.chatId) ? 'docsaver-chat-' + payload.data.chatId : 'docsaver-chat',
+    renotify: true,
+    data: { url: (payload.fcmOptions && payload.fcmOptions.link) || './' }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = new URL(event.notification.data && event.notification.data.url || './', self.location.origin).href;
+  event.waitUntil((async () => {
+    const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clientsList) {
+      if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+        await client.focus();
+        return;
+      }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(target);
+  })());
+});
