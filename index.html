@@ -5032,7 +5032,10 @@
             let activeChatData = null, chatMessagesCache = [], chatReplyTarget = null;
             let chatSeenIds = new Set(), chatTypingTimer = null, chatUnreadCount = 0;
             const chatEsc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-            const chatUid = () => firebaseAuth.currentUser?.uid || currentUser?.firebaseUid || currentUser?.uid || '';
+            // Chat permissions must always use the UID from the live Firebase Auth session.
+            // A cached/local profile UID is not proof of authentication and can cause
+            // Firestore's member-only conversation query to be rejected.
+            const chatUid = () => firebaseAuth.currentUser?.uid || '';
             const chatDate = value => value && typeof value.toDate === 'function' ? value.toDate() : (value ? new Date(value) : new Date());
             const chatTime = value => chatDate(value).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
             async function chatHash(value) {
@@ -5046,9 +5049,17 @@
                 return other.name || other.email || 'Direct message';
             }
             function openChatWorkspace() {
-                if (!currentUser || !chatUid()) { showToast('Sign in to use Doc Saver Chat.'); return; }
+                const authUser = firebaseAuth.currentUser;
+                if (!currentUser || !authUser) {
+                    showToast('Please sign in again to use Chat. Your Firebase sign-in session is not active.');
+                    return;
+                }
+                if (currentUser.firebaseUid && currentUser.firebaseUid !== authUser.uid) {
+                    showToast('Your account session changed. Please sign out and sign back in before opening Chat.');
+                    return;
+                }
                 document.getElementById('chatWorkspace').classList.remove('hidden');
-                document.getElementById('chatAccountLabel').textContent = currentUser.email || currentUser.name || '';
+                document.getElementById('chatAccountLabel').textContent = currentUser.email || authUser.email || currentUser.name || '';
                 startChatList();
             }
             function closeChatWorkspace() {
@@ -5059,6 +5070,10 @@
             function startChatList() {
                 if (chatListUnsub) chatListUnsub();
                 const uid = chatUid();
+                if (!uid) {
+                    document.getElementById('chatConversationList').innerHTML = '<div class="m-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Your sign-in session is not active. Sign out and sign back in to load chats.</div>';
+                    return;
+                }
                 const q = query(collection(firestoreDb,'chats'),where('memberUids','array-contains',uid));
                 chatListUnsub = onSnapshot(q, snap => {
                     const rows = snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -5068,7 +5083,8 @@
                     console.error('Doc Saver chat list listener failed:', err);
                     const host = document.getElementById('chatConversationList');
                     host.innerHTML = '<div class="m-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700"><b>Chat could not connect.</b><br>' + chatEsc(err.code || 'firestore-error') + ': ' + chatEsc(err.message || 'Check your Firebase connection and Firestore rules.') + '</div>';
-                    showToast('Chat connection failed (' + (err.code || 'unknown error') + ').');
+                    showToast('Chat connection failed (' + (err.code || 'unknown error') + '). Make sure the latest firestore.rules are published in Firebase project doc-saver-515422.');
+
                 });
             }
             function renderChatList(rows) {
